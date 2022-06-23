@@ -3,39 +3,58 @@
 #include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include "vfs/ivfs.hpp"
+
+static void write_file_to_vfs(IVFS &vfs, const char *path, const char *file)
+{
+        File *f;
+        int fd = open(file, O_RDONLY);
+        if (fd == -1) {
+                perror(file);
+                return;
+        }
+        f = vfs.Create(path);
+        if (!f) {
+                fprintf(stderr, "%s: not opened\n", path);
+                return;
+        }
+        char buf[4096];
+        int rc;
+        while ((rc = read(fd, buf, sizeof(buf))) > 0)
+                vfs.Write(f, buf, rc);
+        close(fd);
+        vfs.Close(f);
+}
+
+static void read_file_from_vfs(IVFS &vfs, const char *path, const char *file)
+{
+        File *f;
+        int fd = open(file, O_WRONLY | O_CREAT, 0644);
+        if (fd == -1) {
+                perror(file);
+                return;
+        }
+        f = vfs.Open(path);
+        if (!f) {
+                fprintf(stderr, "%s: not opened\n", path);
+                return;
+        }
+        char buf[4096];
+        int rc;
+        while ((rc = vfs.Read(f, buf, sizeof(buf))) > 0)
+                write(fd, buf, rc);
+        close(fd);
+        vfs.Close(f);
+}
 
 int main(int argc, char **argv)
 {
-        IVFS B;
-        chdir("Storage");
-        if (argc != 4) {
-                fprintf(stderr, "error\n");
-                exit(1);
-        }
-        B.Init(!strcmp(argv[1], "makefs"));
-        File *f;
-        char buf[128];
-        int rc = 0;
-        if (!strcmp(argv[3], "write")) {
-                f = B.Create(argv[2]);
-                fprintf(stderr, "index = %d\n", f->master->inode_idx);
-        
-                while ((rc = read(0, buf, sizeof(buf))) > 0) {
-                        int res = B.Write(f, buf, rc);
-                        if (res != rc) {
-                                fprintf(stderr, "error2\n");
-                                exit(1);
-                        }
-                }
-                B.Close(f);
-        } else {
-                f = B.Open(argv[2]);
-                fprintf(stderr, "index = %d\n", f->master->inode_idx); 
-                while ((rc = B.Read(f, buf, sizeof(buf))) > 0)
-                        write(1, buf, rc);
-                B.Close(f);
-                return 0;
-        }
+        IVFS vfs;
+        vfs.Init(true);
+        write_file_to_vfs(vfs, "/file", "test");
+        write_file_to_vfs(vfs, "/file", "test2");
+        read_file_from_vfs(vfs, "/file", "test3");
+        return 0;
 }
 

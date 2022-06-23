@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <pthread.h>
 
 struct BlockAddr {
         uint32_t storage_num;
@@ -20,11 +21,12 @@ public:
         ~BlockManager();
         bool Init();
         BlockAddr AllocateBlock();
-        void FreeBlock(BlockAddr addr); 
+        void FreeBlock(BlockAddr addr);
         void *ReadBlock(BlockAddr addr);
         void UnmapBlock(void *ptr);
+        void SyncBlocks();
         static bool CreateFreeBlockArray();
-        static bool CreateBlockSpace(); 
+        static bool CreateBlockSpace();
 private:
         uint32_t SearchFreeBlock(uint32_t idx);
         uint32_t CalculateFreeBlocks(uint32_t idx);

@@ -3,8 +3,8 @@ SOURCES = $(wildcard *.cpp)
 HEADERS = $(filter-out main.hpp, $(SOURCES:.cpp=.hpp))
 OBJECTS = $(SOURCES:.cpp=.o)
 CXX = g++
-CXXFLAGS = -Wall -g -O0
-LDLIBS = -lpthread -lvfs -Lvfs 
+CXXFLAGS = -Wall -g
+LDLIBS = -lpthread -lvfs -Lvfs
 LIBDEPEND = vfs/libvfs.a
 CTAGS = ctags
 
