@@ -1,9 +1,7 @@
+#include <iostream>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <unistd.h>
 #include <fcntl.h>
-#include <getopt.h>
+#include <unistd.h>
 #include "vfs/ivfs.hpp"
 
 static void write_file_to_vfs(IVFS &vfs, const char *path, const char *file)
@@ -16,10 +14,10 @@ static void write_file_to_vfs(IVFS &vfs, const char *path, const char *file)
         }
         f = vfs.Create(path);
         if (!f) {
-                fprintf(stderr, "%s: not opened\n", path);
+                std::cerr << "VFS: file not opened: " << path << std::endl;
                 return;
         }
-        char buf[4096];
+        char buf[139];
         int rc;
         while ((rc = read(fd, buf, sizeof(buf))) > 0)
                 vfs.Write(f, buf, rc);
@@ -37,10 +35,10 @@ static void read_file_from_vfs(IVFS &vfs, const char *path, const char *file)
         }
         f = vfs.Open(path);
         if (!f) {
-                fprintf(stderr, "%s: not opened\n", path);
+                std::cerr << "VFS: file not opened: " << path << std::endl; 
                 return;
         }
-        char buf[4096];
+        char buf[333];
         int rc;
         while ((rc = vfs.Read(f, buf, sizeof(buf))) > 0)
                 write(fd, buf, rc);
@@ -52,9 +50,27 @@ int main(int argc, char **argv)
 {
         IVFS vfs;
         vfs.Init(true);
-        write_file_to_vfs(vfs, "/file", "test");
-        write_file_to_vfs(vfs, "/file", "test2");
-        read_file_from_vfs(vfs, "/file", "test3");
+        write_file_to_vfs(vfs, "/usr/local/games/data1", "test/test1");
+        write_file_to_vfs(vfs, "/usr/local/games/data2", "test/test2");
+        write_file_to_vfs(vfs, "/usr/local/games/data3", "test/test3");
+        write_file_to_vfs(vfs, "/data4", "test/test4");
+        write_file_to_vfs(vfs, "/etc/config/data5", "test/test5");
+        write_file_to_vfs(vfs, "/data6", "test/test6");
+        write_file_to_vfs(vfs, "/usr/bin/data6", "test/test7");
+        write_file_to_vfs(vfs, "/usr/local/games/new/data8", "test/test8");
+        write_file_to_vfs(vfs, "/usr/local/include/data9", "test/test9");
+        write_file_to_vfs(vfs, "/usr/games/data10", "test/test10");
+
+        read_file_from_vfs(vfs, "/usr/local/games/data1", "test/test1.out");
+        read_file_from_vfs(vfs, "/usr/local/games/data2", "test/test2.out");
+        read_file_from_vfs(vfs, "/usr/local/games/data3", "test/test3.out");
+        read_file_from_vfs(vfs, "/data4", "test/test4.out");
+        read_file_from_vfs(vfs, "/etc/config/data5", "test/test5.out");
+        read_file_from_vfs(vfs, "/data6", "test/test6.out");
+        read_file_from_vfs(vfs, "/usr/bin/data6", "test/test7.out");
+        read_file_from_vfs(vfs, "/usr/local/games/new/data8", "test/test8.out");
+        read_file_from_vfs(vfs, "/usr/local/include/data9", "test/test9.out");
+        read_file_from_vfs(vfs, "/usr/games/data10", "test/test10.out");
         return 0;
 }
 

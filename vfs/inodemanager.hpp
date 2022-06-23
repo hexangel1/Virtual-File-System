@@ -16,6 +16,8 @@ class InodeManager {
         uint32_t inodes_cache[inodes_cache_size];
         int inodes_used;
         int inodes_fd;
+        std::mutex gf_mtx;
+        std::mutex rw_mtx;
 public:
         InodeManager();
         ~InodeManager();

@@ -23,66 +23,78 @@ bool InodeManager::Init()
 {
         inodes_fd = open("inode_space.bin", O_RDWR);
         if (inodes_fd == -1) {
-                perror("inode_space.bin");
+                perror("InodeManager::Init(): open");
                 return false;
         }
         SearchFreeInodes();
         return true;
 }
 
-bool InodeManager::CreateInodeSpace()
-{
-        int fd = creat("inode_space.bin", 0644);
-        if (fd == -1) {
-                perror("inode_space.bin");
-                return false;
-        }
-        ftruncate(fd, IVFS::max_file_amount * sizeof(struct Inode));
-        close(fd);
-        return true;
-}
-
 uint32_t InodeManager::GetInode()
 {
         uint32_t retval = -1;
+        gf_mtx.lock();
         if (inodes_used == inodes_cache_size)
                 SearchFreeInodes();
         if (inodes_used < inodes_cache_size) {
                 retval = inodes_cache[inodes_used];
                 inodes_used++;
         }
+        gf_mtx.unlock();
         return retval;
 }
 
 void InodeManager::FreeInode(uint32_t idx)
 {
+        gf_mtx.lock();
         if (inodes_used > 0) {
                 inodes_used--;
                 inodes_cache[inodes_used] = idx;
         }
+        gf_mtx.unlock();
 }
 
 bool InodeManager::ReadInode(Inode *ptr, uint32_t idx)
 {
         int res;
+        rw_mtx.lock();
         res = lseek(inodes_fd, idx * sizeof(Inode), SEEK_SET);
-        if (res == -1)
+        if (res == -1) {
+                rw_mtx.unlock();
                 return false;
+        }
         res = read(inodes_fd, ptr, sizeof(Inode));
-        if (res != sizeof(Inode))
-                return false;
-        return true;
+        rw_mtx.unlock();
+        return res == sizeof(Inode);
 }
 
 bool InodeManager::WriteInode(const Inode *ptr, uint32_t idx)
 {
         int res;
+        rw_mtx.lock();
         res = lseek(inodes_fd, idx * sizeof(Inode), SEEK_SET);
-        if (res == -1)
+        if (res == -1) {
+                rw_mtx.unlock();
                 return false;
+        }
         res = write(inodes_fd, ptr, sizeof(Inode));
-        if (res != sizeof(Inode))
+        rw_mtx.unlock();
+        return res == sizeof(Inode);
+}
+
+bool InodeManager::CreateInodeSpace()
+{
+        int fd = open("inode_space.bin", O_RDWR | O_CREAT | O_TRUNC, 0644);
+        if (fd == -1) {
+                perror("InodeManager::CreateInodeSpace(): open");
                 return false;
+        }
+        int res = ftruncate(fd, IVFS::max_file_amount * sizeof(struct Inode));
+        if (res == -1) {
+                perror("InodeManager::CreateInodeSpace(): ftruncate");
+                return false;
+        }
+        close(fd);
         return true;
 }
 

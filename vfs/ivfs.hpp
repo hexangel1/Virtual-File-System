@@ -1,12 +1,14 @@
 #ifndef IVFS_HPP_SENTRY
 #define IVFS_HPP_SENTRY
 
-#include "blockmanager.hpp"
 #include "inodemanager.hpp"
+#include "blockmanager.hpp"
+
+#define MAX_FILENAME_LEN 27
 
 struct OpenedFile {
-        unsigned int opened;
-        bool read_only;
+        int opened;
+        bool read_only; 
         uint32_t inode_idx;
         struct Inode in;
 };
@@ -19,7 +21,7 @@ struct File {
 };
 
 struct DirRecord {
-        char filename[28];
+        char filename[MAX_FILENAME_LEN + 1];
         uint32_t inode_idx;
 };
 
@@ -34,8 +36,9 @@ class IVFS {
         OpenedFile **files;
         size_t arr_size;
         size_t arr_used;
+        std::mutex mtx;
 public:
-        static const uint32_t storage_amount = 4;
+        static const uint32_t storage_amount = 7;
         static const size_t storage_size = 16384;
         static const size_t block_size = 4096;
         static const uint32_t max_file_amount = 100000;
@@ -51,10 +54,11 @@ public:
         size_t Read(File *f, char *buf, size_t len);
         size_t Write(File *f, const char *buf, size_t len);
 private:
-        OpenedFile *OpenFile(const char *path, bool w);
+        File *NewFile(const char *path, bool write_perm);
+        OpenedFile *OpenFile(const char *path, bool write_perm);
         void CloseFile(OpenedFile *ofptr);
         void ResizeFilesArray();
-        uint32_t SearchInode(const char *path, bool w);
+        uint32_t SearchInode(const char *path, bool write_perm);
         uint32_t SearchFileInDir(Inode *dir, const char *name);
         uint32_t CreateFileInDir(Inode *dir, const char *name, bool is_dir);
         DirRecordList *ReadDirectory(Inode *dir);
@@ -69,7 +73,8 @@ private:
         void CreateRootDirectory();
         static void CreateFileSystem();
         static bool EmptyRecord(DirRecord *rec);
-        static const char *GetNextDir(const char *path, char *filename);
+        static const char *PathParsing(const char *path, char *filename);
+        static bool CheckPath(const char *path);
 };
 
 #endif /* IVFS_HPP_SENTRY */

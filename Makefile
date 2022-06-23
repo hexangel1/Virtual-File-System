@@ -26,6 +26,11 @@ run: $(PROJECT)
 memcheck: $(PROJECT)
 	valgrind -s --leak-check=full --track-origins=yes ./$(PROJECT)
 
+tests: $(PROJECT)
+	cd test && ./build_tests.sh
+	./$(PROJECT)
+	cd test && ./run_tests.sh; rm test*
+
 tags: $(SOURCES) $(HEADERS)
 	$(CTAGS) $(SOURCES) $(HEADERS)
 	cd vfs && $(MAKE) tags

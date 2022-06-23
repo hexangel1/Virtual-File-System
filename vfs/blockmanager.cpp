@@ -38,13 +38,13 @@ bool BlockManager::Init()
         void *p;
         fd = open("free_blocks.bin", O_RDWR);
         if (fd == -1) {
-                perror("open");
+                perror("BlockManager::Init(): open");
                 return false;
         }
         size = IVFS::storage_size * IVFS::storage_amount / 8;
         p = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         if (p == MAP_FAILED) {
-                perror("mmap");
+                perror("BlockManager::Init(): mmap");
                 return false;
         }
         bitarray = (char*)p;
@@ -54,7 +54,7 @@ bool BlockManager::Init()
                 free_blocks[i] = CalculateFreeBlocks(i);
                 storage_fds[i] = open(storage_name, O_RDWR);
                 if (storage_fds[i] == -1) {
-                        perror("open");
+                        perror("BlockManager::Init(): open");
                         return false;
                 }
         }
@@ -64,18 +64,22 @@ bool BlockManager::Init()
 BlockAddr BlockManager::AllocateBlock()
 {
         BlockAddr addr;
+        mtx.lock();
         uint32_t idx = MostFreeStorage();
         addr.storage_num = idx;
         addr.block_num = SearchFreeBlock(idx);
         free_blocks[idx]--;
+        mtx.unlock();
         return addr;
 }
 
 void BlockManager::FreeBlock(BlockAddr addr)
 {
         size_t idx = addr.storage_num * IVFS::storage_size + addr.block_num;
+        mtx.lock();
         bitarray[idx / 8] |= 0x1 << idx % 8;
         free_blocks[addr.storage_num]++;
+        mtx.unlock();
 }
 
 void *BlockManager::ReadBlock(BlockAddr addr)
@@ -84,7 +88,7 @@ void *BlockManager::ReadBlock(BlockAddr addr)
                          MAP_SHARED, storage_fds[addr.storage_num],
                          addr.block_num * IVFS::block_size);
         if (ptr == MAP_FAILED) {
-                perror("immap");
+                perror("BlockManager::ReadBlock(): mmap");
                 return 0;
         }
         return ptr;
@@ -146,14 +150,18 @@ bool BlockManager::CreateFreeBlockArray()
 {
         int fd = open("free_blocks.bin", O_RDWR | O_CREAT | O_TRUNC, 0644);
         if (fd == -1) {
-                perror("open");
+                perror("BlockManager::CreateFreeBlockArray(): open");
                 return false;
         }
         size_t size = IVFS::storage_amount * IVFS::storage_size / 8;
-        ftruncate(fd, size);
+        int res = ftruncate(fd, size);
+        if (res == -1) {
+                perror("BlockManager::CreateFreeBlockArray(): ftruncate");
+                return false;
+        }
         void *p = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
         if (p == MAP_FAILED) {
-                perror("mmap");
+                perror("BlockManager::CreateFreeBlockArray(): mmap");
                 return false;
         }
         memset(p, 0xFF, size);
@@ -165,16 +173,19 @@ bool BlockManager::CreateFreeBlockArray()
 
 bool BlockManager::CreateBlockSpace()
 {
-        char storage_name[32];
-        int fd;
         for (uint32_t i = 0; i < IVFS::storage_amount; i++) {
+                char storage_name[32];
                 sprintf(storage_name, "storage%d.bin", i);
-                fd = open(storage_name, O_RDWR | O_CREAT | O_TRUNC, 0644);
+                int fd = open(storage_name, O_RDWR | O_CREAT | O_TRUNC, 0644);
                 if (fd == -1) {
-                        perror(storage_name);
+                        perror("BlockManager::CreateBlockSpace(): open");
                         return false;
                 }
-                ftruncate(fd, IVFS::storage_size * IVFS::block_size);
+                int res = ftruncate(fd, IVFS::storage_size * IVFS::block_size);
+                if (res == -1) {
+                        perror("BlockManager::CreateBlockSpace(): ftruncate");
+                        return false;
+                }
                 close(fd);
         }
         return true;

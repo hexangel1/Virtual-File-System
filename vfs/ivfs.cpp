@@ -1,8 +1,6 @@
-#include <cstdio>
+#include <iostream>
 #include <cstring>
 #include "ivfs.hpp"
-#include "blockmanager.hpp"
-#include "inodemanager.hpp"
 
 IVFS::IVFS() : arr_size(8), arr_used(0)
 {
@@ -29,58 +27,38 @@ bool IVFS::Init(bool makefs)
                 CreateFileSystem();
         res = im.Init();
         if (!res) {
-                fprintf(stderr, "Failed to start InodeManager\n");
+                std::cerr << "Failed to start InodeManager" << std::endl;
                 return false;
         }
         res = bm.Init();
         if (!res) {
-                fprintf(stderr, "Failed to start BlockManager\n");
+                std::cerr << "Failed to start BlockManager" << std::endl;
                 return false;
         }
         if (makefs)
                 CreateRootDirectory();
-        fprintf(stderr, "Virtual File System launched successfully\n");
+        std::cerr << "Virtual File System launched successfully" << std::endl;
         return true;
 }
 
 File *IVFS::Open(const char *path)
 {
-        OpenedFile *ofptr = OpenFile(path, false);
-        if (!ofptr)
-                return nullptr;
-        File *f = new File;
-        f->master = ofptr;
-        f->cur_pos = 0;
-        f->cur_block = 0;
-        f->block = (char*)bm.ReadBlock(f->master->in.block[0]);
-        return f;
+        return NewFile(path, false);
 }
 
 File *IVFS::Create(const char *path)
 {
-        OpenedFile *ofptr = OpenFile(path, true);
-        if (!ofptr)
-                return nullptr;
-        if (ofptr->in.byte_size) {
-                FreeBlocks(&ofptr->in);
-                ofptr->in.byte_size = 0;
-                ofptr->in.blk_size = 1;
-                ofptr->in.block[0] = bm.AllocateBlock();
-        }
-        File *f = new File;
-        f->master = ofptr;
-        f->cur_pos = 0;
-        f->cur_block = 0;
-        f->block = (char*)bm.ReadBlock(f->master->in.block[0]);
-        return f;
+        return NewFile(path, true);
 }
 
 void IVFS::Close(File *f)
 {
         bm.UnmapBlock(f->block);
+        mtx.lock();
         f->master->opened--;
         if (f->master->opened == 0)
                 CloseFile(f->master);
+        mtx.unlock();
         delete f;
 }
 
@@ -93,12 +71,12 @@ size_t IVFS::Read(File *f, char *buf, size_t len)
         while (len > 0) {
                 size_t can_read = block_size - f->cur_pos;
                 if (len < can_read) {
-                        memcpy(buf, f->block + f->cur_pos, len);
+                        memcpy(buf + rc, f->block + f->cur_pos, len);
                         f->cur_pos += len;
                         rc += len;
                         len = 0;
                 } else {
-                        memcpy(buf, f->block + f->cur_pos, can_read);
+                        memcpy(buf + rc, f->block + f->cur_pos, can_read);
                         rc += can_read;
                         f->cur_pos = 0;
                         f->cur_block++;
@@ -118,13 +96,13 @@ size_t IVFS::Write(File *f, const char *buf, size_t len)
         while (len > 0) {
                 size_t can_write = block_size - f->cur_pos;
                 if (len < can_write) {
-                        memcpy(f->block + f->cur_pos, buf, len);
+                        memcpy(f->block + f->cur_pos, buf + wc, len);
                         f->cur_pos += len;
                         f->master->in.byte_size += len;
                         wc += len;
                         len = 0;
                 } else {
-                        memcpy(f->block + f->cur_pos, buf, can_write);
+                        memcpy(f->block + f->cur_pos, buf + wc, can_write);
                         f->master->in.byte_size += can_write;
                         wc += can_write;
                         f->cur_pos = 0;
@@ -138,14 +116,43 @@ size_t IVFS::Write(File *f, const char *buf, size_t len)
         return wc;
 }
 
-OpenedFile *IVFS::OpenFile(const char *path, bool w)
+File *IVFS::NewFile(const char *path, bool write_perm)
 {
-        uint32_t idx = SearchInode(path, w);
+        if (!CheckPath(path)) {
+                std::cerr << "Bad path: " << path << std::endl;
+                return nullptr;
+        } 
+        mtx.lock();
+        OpenedFile *ofptr = OpenFile(path, write_perm);
+        mtx.unlock();
+        if (!ofptr)
+                return nullptr;
+        if (write_perm && ofptr->in.byte_size) {
+                FreeBlocks(&ofptr->in);
+                ofptr->in.byte_size = 0;
+                ofptr->in.blk_size = 1;
+                ofptr->in.block[0] = bm.AllocateBlock();
+        }
+        File *f = new File;
+        f->master = ofptr;
+        f->cur_pos = 0;
+        f->cur_block = 0;
+        f->block = (char*)bm.ReadBlock(f->master->in.block[0]);
+        return f;
+}
+
+OpenedFile *IVFS::OpenFile(const char *path, bool write_perm)
+{
+        uint32_t idx = SearchInode(path, write_perm);
         if (idx == -1U)
                 return nullptr;
-        for (size_t i = 0; i < arr_size; i++)
+        for (size_t i = 0; i < arr_size; i++) {
                 if (files[i] && files[i]->inode_idx == idx) {
-                        return files[i]->read_only && !w ? files[i] : nullptr;
+                        if (files[i]->read_only && !write_perm)
+                                return files[i];
+                        std::cerr << "Incompatible file open mode" << std::endl;
+                        return nullptr;
+                }
         }
         if (arr_used == arr_size)
                 ResizeFilesArray();
@@ -154,7 +161,7 @@ OpenedFile *IVFS::OpenFile(const char *path, bool w)
                         files[i] = new OpenedFile;
                         arr_used++;
                         files[i]->opened = 1;
-                        files[i]->read_only = !w;
+                        files[i]->read_only = !write_perm;
                         files[i]->inode_idx = idx;
                         im.ReadInode(&files[i]->in, idx);
                         return files[i];
@@ -189,31 +196,30 @@ void IVFS::ResizeFilesArray()
         arr_size = new_size;
 }
 
-uint32_t IVFS::SearchInode(const char *path, bool w)
+uint32_t IVFS::SearchInode(const char *path, bool write_perm)
 {
-        char filename[32];
-        Inode dir;
         uint32_t dir_idx = 0, idx;
+        char filename[MAX_FILENAME_LEN + 1];
+        Inode dir;
         do {
-                path = GetNextDir(path, filename);
-                fprintf(stderr, "searching for %s in dir %d\n",
-                        filename, dir_idx);
+                path = PathParsing(path, filename);
+                std::cerr << "Searching for file <" << filename <<
+                             "> in directory " << dir_idx << "..." << std::endl;
                 im.ReadInode(&dir, dir_idx);
                 if (!dir.is_dir) {
-                        fprintf(stderr, "Not a directory\n");
+                        std::cerr << dir_idx << " not directory" << std::endl;
                         return -1;
                 }
                 idx = SearchFileInDir(&dir, filename);
-                if (idx == -1U) {
-                        if (!w) {
-                                fprintf(stderr, "File %s not found\n",
-                                        filename);
+                if (idx == 0xFFFFFFFF) {
+                        std::cerr << "File <" << filename << "> not found\n";
+                        if (!write_perm) {
+                                std::cerr << "Creation is not permitted\n";
                                 return -1;
                         }
                         idx = CreateFileInDir(&dir, filename, path);
                         im.WriteInode(&dir, dir_idx);
                 }
-                fprintf(stderr, "found: %s %d\n", filename, idx);
                 dir_idx = idx;
         } while (path);
         return idx;
@@ -223,12 +229,16 @@ uint32_t IVFS::SearchFileInDir(Inode *dir, const char *name)
 {
         uint32_t retval = -1;
         DirRecordList *ptr = ReadDirectory(dir);
-        fprintf(stderr, "files in directory:\n");
-        for (DirRecordList *tmp = ptr; tmp; tmp = tmp->next)
-                fprintf(stderr, "%s\n", tmp->rec.filename);
+        std::cerr << "Files in current directory:" << std::endl;
+        for (DirRecordList *tmp = ptr; tmp; tmp = tmp->next) {
+                std::cerr << tmp->rec.filename << " [";
+                std::cerr << tmp->rec.inode_idx << "]" << std::endl;
+        }
         for (DirRecordList *tmp = ptr; tmp; tmp = tmp->next) {
                 if (!strcmp(tmp->rec.filename, name)) {
                         retval = tmp->rec.inode_idx;
+                        std::cerr << "Found: <" << tmp->rec.filename << "> [";
+                        std::cerr << tmp->rec.inode_idx << "]" << std::endl;
                         break;
                 }
         }
@@ -249,7 +259,7 @@ uint32_t IVFS::CreateFileInDir(Inode *dir, const char *name, bool is_dir)
         uint32_t idx = im.GetInode();
         im.WriteInode(&in, idx);
         MakeDirRecord(dir, name, idx);
-        fprintf(stderr, "created %s : %d\n", name, idx);
+        std::cerr << "Created file: " << name << " ["<< idx << "]" << std::endl;
         return idx;
 }
 
@@ -392,7 +402,7 @@ void IVFS::CreateRootDirectory()
         };
         memset(&root.block, 0, sizeof(root.block));
         root.block[0] = bm.AllocateBlock();
-        fprintf(stderr, "Created '/' %d\n", 0);
+        std::cerr << "Created root directory '/' [0]" << std::endl;
         im.WriteInode(&root, 0);
 }
 
@@ -408,11 +418,30 @@ bool IVFS::EmptyRecord(DirRecord *rec)
         return rec->filename[0] == 0;
 }
 
-const char *IVFS::GetNextDir(const char *path, char *filename)
+const char *IVFS::PathParsing(const char *path, char *filename)
 {
-        for (path++; *path && *path != '/'; path++, filename++)
+        if (*path == '/')
+                path++;
+        for (; *path && *path != '/'; path++, filename++)
                 *filename = *path;
         *filename = 0;
-        return *path ? path : 0;
+        return *path == '/' ? path + 1 : nullptr;
+}
+
+bool IVFS::CheckPath(const char *path)
+{
+        if (*path != '/')
+                return false;
+        int len = 0;
+        for (path++; *path; path++) {
+                if (*path == '/') {
+                        if (len == 0 || len > MAX_FILENAME_LEN)
+                                return false;
+                        len = 0;
+                        continue;
+                }
+                len++;
+        }
+        return true;
 }
 

@@ -3,7 +3,7 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <pthread.h>
+#include <mutex>
 
 struct BlockAddr {
         uint32_t storage_num;
@@ -16,6 +16,7 @@ class BlockManager {
         int fd;
         int *storage_fds;
         uint32_t *free_blocks;
+        std::mutex mtx;
 public:
         BlockManager();
         ~BlockManager();
