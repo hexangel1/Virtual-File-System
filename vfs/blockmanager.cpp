@@ -25,6 +25,7 @@ BlockManager::~BlockManager()
         }
         if (fd != -1)
                 close(fd);
+        SyncBlocks();
         for (uint32_t i = 0; i < IVFS::storage_amount; i++) {
                 if (storage_fds[i] != -1)
                         close(storage_fds[i]);
@@ -61,7 +62,7 @@ bool BlockManager::Init()
         return true;
 }
 
-BlockAddr BlockManager::AllocateBlock()
+BlockAddr BlockManager::AllocateBlock() const
 {
         BlockAddr addr;
         mtx.lock();
@@ -73,7 +74,7 @@ BlockAddr BlockManager::AllocateBlock()
         return addr;
 }
 
-void BlockManager::FreeBlock(BlockAddr addr)
+void BlockManager::FreeBlock(BlockAddr addr) const
 {
         size_t idx = addr.storage_num * IVFS::storage_size + addr.block_num;
         mtx.lock();
@@ -82,7 +83,7 @@ void BlockManager::FreeBlock(BlockAddr addr)
         mtx.unlock();
 }
 
-void *BlockManager::ReadBlock(BlockAddr addr)
+void *BlockManager::ReadBlock(BlockAddr addr) const
 {
         void *ptr = mmap(0, IVFS::block_size, PROT_READ | PROT_WRITE,
                          MAP_SHARED, storage_fds[addr.storage_num],
@@ -94,19 +95,19 @@ void *BlockManager::ReadBlock(BlockAddr addr)
         return ptr;
 }
 
-void BlockManager::UnmapBlock(void *ptr)
+void BlockManager::UnmapBlock(void *ptr) const
 {
         msync(ptr, IVFS::block_size, MS_ASYNC);
         munmap(ptr, IVFS::block_size);
 }
 
-void BlockManager::SyncBlocks()
+void BlockManager::SyncBlocks() const
 {
         for (uint32_t i = 0; i < IVFS::storage_amount; i++)
                 fsync(storage_fds[i]);
 }
 
-uint32_t BlockManager::SearchFreeBlock(uint32_t idx)
+uint32_t BlockManager::SearchFreeBlock(uint32_t idx) const
 {
         uint32_t blocks = IVFS::storage_size / 8;
         for (uint32_t i = blocks * idx; i < blocks * (idx + 1); i++) {
@@ -120,7 +121,7 @@ uint32_t BlockManager::SearchFreeBlock(uint32_t idx)
         return 0xFFFFFFFF;
 }
 
-uint32_t BlockManager::CalculateFreeBlocks(uint32_t idx)
+uint32_t BlockManager::CalculateFreeBlocks(uint32_t idx) const
 {
         uint32_t free_blocks = 0;
         uint32_t blocks = IVFS::storage_size / 8;
@@ -133,7 +134,7 @@ uint32_t BlockManager::CalculateFreeBlocks(uint32_t idx)
         return free_blocks;
 }
 
-uint32_t BlockManager::MostFreeStorage()
+uint32_t BlockManager::MostFreeStorage() const
 {
         uint32_t max = free_blocks[0];
         uint32_t idx = 0;
@@ -181,7 +182,8 @@ bool BlockManager::CreateBlockSpace()
                         perror("BlockManager::CreateBlockSpace(): open");
                         return false;
                 }
-                int res = ftruncate(fd, IVFS::storage_size * IVFS::block_size);
+                size_t size = IVFS::storage_size * IVFS::block_size;
+                int res = ftruncate(fd, size);
                 if (res == -1) {
                         perror("BlockManager::CreateBlockSpace(): ftruncate");
                         return false;

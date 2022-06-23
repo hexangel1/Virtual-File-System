@@ -8,7 +8,7 @@
 
 struct OpenedFile {
         int opened;
-        bool read_only; 
+        bool read_only;
         uint32_t inode_idx;
         struct Inode in;
 };
@@ -38,9 +38,9 @@ class IVFS {
         size_t arr_used;
         std::mutex mtx;
 public:
-        static const uint32_t storage_amount = 7;
-        static const size_t storage_size = 16384;
-        static const size_t block_size = 4096;
+        static const uint32_t storage_amount = 4;
+        static const uint32_t storage_size = 16384;
+        static const uint32_t block_size = 4096;
         static const uint32_t max_file_amount = 100000;
         static const uint32_t addr_in_block = block_size / sizeof(BlockAddr);
         static const uint32_t dirr_in_block = block_size / sizeof(DirRecord);
@@ -56,8 +56,9 @@ public:
 private:
         File *NewFile(const char *path, bool write_perm);
         OpenedFile *OpenFile(const char *path, bool write_perm);
-        void CloseFile(OpenedFile *ofptr);
-        void ResizeFilesArray();
+        OpenedFile *AddOpenedFile(uint32_t idx, bool write_perm);
+        void DeleteOpenedFile(OpenedFile *ofptr);
+        OpenedFile *SearchOpenedFile(uint32_t idx);
         uint32_t SearchInode(const char *path, bool write_perm);
         uint32_t SearchFileInDir(Inode *dir, const char *name);
         uint32_t CreateFileInDir(Inode *dir, const char *name, bool is_dir);
@@ -72,7 +73,6 @@ private:
         void FreeBlocks(Inode *in);
         void CreateRootDirectory();
         static void CreateFileSystem();
-        static bool EmptyRecord(DirRecord *rec);
         static const char *PathParsing(const char *path, char *filename);
         static bool CheckPath(const char *path);
 };

@@ -33,6 +33,9 @@ bool InodeManager::Init()
 uint32_t InodeManager::GetInode()
 {
         uint32_t retval = -1;
+        Inode in;
+        memset(&in, 0, sizeof(in));
+        in.is_busy = true;
         gf_mtx.lock();
         if (inodes_used == inodes_cache_size)
                 SearchFreeInodes();
@@ -40,6 +43,7 @@ uint32_t InodeManager::GetInode()
                 retval = inodes_cache[inodes_used];
                 inodes_used++;
         }
+        WriteInode(&in, retval);
         gf_mtx.unlock();
         return retval;
 }
@@ -54,7 +58,7 @@ void InodeManager::FreeInode(uint32_t idx)
         gf_mtx.unlock();
 }
 
-bool InodeManager::ReadInode(Inode *ptr, uint32_t idx)
+bool InodeManager::ReadInode(Inode *ptr, uint32_t idx) const
 {
         int res;
         rw_mtx.lock();
@@ -68,7 +72,7 @@ bool InodeManager::ReadInode(Inode *ptr, uint32_t idx)
         return res == sizeof(Inode);
 }
 
-bool InodeManager::WriteInode(const Inode *ptr, uint32_t idx)
+bool InodeManager::WriteInode(const Inode *ptr, uint32_t idx) const
 {
         int res;
         rw_mtx.lock();

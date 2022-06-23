@@ -3,7 +3,7 @@ SOURCES = $(wildcard *.cpp)
 HEADERS = $(SOURCES:.cpp=.hpp)
 OBJECTS = $(SOURCES:.cpp=.o)
 CXX = g++
-CXXFLAGS = -Wall -g
+CXXFLAGS = -Wall -Wextra -g
 CTAGS = ctags
 AR = ar
 
@@ -25,7 +25,7 @@ tags: $(SOURCES) $(HEADERS)
 tar: lib$(LIBNAME).tar
 
 clean:
-	rm -f lib$(LIBNAME).a *.o *.a deps.mk tags
+	rm -f lib$(LIBNAME).a *.o *.a *.bin deps.mk tags
 
 ifneq (clean, $(MAKECMDGOALS))
 ifneq (tags, $(MAKECMDGOALS))

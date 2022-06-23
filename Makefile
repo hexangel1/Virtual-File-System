@@ -3,7 +3,7 @@ SOURCES = $(wildcard *.cpp)
 HEADERS = $(filter-out main.hpp, $(SOURCES:.cpp=.hpp))
 OBJECTS = $(SOURCES:.cpp=.o)
 CXX = g++
-CXXFLAGS = -Wall -g
+CXXFLAGS = -Wall -Wextra -g
 LDLIBS = -lpthread -lvfs -Lvfs
 LIBDEPEND = vfs/libvfs.a
 CTAGS = ctags
@@ -28,15 +28,15 @@ memcheck: $(PROJECT)
 
 tests: $(PROJECT)
 	cd test && ./build_tests.sh
-	./$(PROJECT)
-	cd test && ./run_tests.sh; rm test*
+	valgrind ./$(PROJECT)
+	cd test && ./run_tests.sh
 
 tags: $(SOURCES) $(HEADERS)
 	$(CTAGS) $(SOURCES) $(HEADERS)
 	cd vfs && $(MAKE) tags
 
 clean:
-	rm -f $(PROJECT) *.o *.a deps.mk tags
+	rm -f $(PROJECT) *.o *.a *.bin deps.mk tags
 	cd vfs && $(MAKE) clean
 
 ifneq (clean, $(MAKECMDGOALS))

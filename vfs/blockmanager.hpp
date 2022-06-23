@@ -16,22 +16,22 @@ class BlockManager {
         int fd;
         int *storage_fds;
         uint32_t *free_blocks;
-        std::mutex mtx;
+        mutable std::mutex mtx;
 public:
         BlockManager();
         ~BlockManager();
         bool Init();
-        BlockAddr AllocateBlock();
-        void FreeBlock(BlockAddr addr);
-        void *ReadBlock(BlockAddr addr);
-        void UnmapBlock(void *ptr);
-        void SyncBlocks();
+        BlockAddr AllocateBlock() const;
+        void FreeBlock(BlockAddr addr) const;
+        void *ReadBlock(BlockAddr addr) const;
+        void UnmapBlock(void *ptr) const;
+        void SyncBlocks() const;
         static bool CreateFreeBlockArray();
         static bool CreateBlockSpace();
 private:
-        uint32_t SearchFreeBlock(uint32_t idx);
-        uint32_t CalculateFreeBlocks(uint32_t idx);
-        uint32_t MostFreeStorage();
+        uint32_t SearchFreeBlock(uint32_t idx) const;
+        uint32_t CalculateFreeBlocks(uint32_t idx) const;
+        uint32_t MostFreeStorage() const;
 };
 
 #endif /* BLOCKMANAGER_HPP_SENTRY */
