@@ -52,51 +52,71 @@ int main(void)
 {
         const char hello[] = "Hello World";
         char buf[128];
-        int res;
+        int res, rc;
+        File *f1, *f2, *f3;
         IVFS vfs;
         vfs.Init(true);
-        File *f1, *f2, *f3;
+
+        std::cerr << "SIMPLE OPEN/CLOSE TESTS" << std::endl;
 
         f1 = vfs.Create("/home/file.txt");
         res = vfs.Read(f1, buf, sizeof(buf));
-        std::cerr << res << std::endl;
+        if (res == 0)
+                std::cerr << "READ FAILED: OK!" << std::endl;
+        else
+                std::cerr << "BUG #1 !!!" << std::endl;
         vfs.Close(f1);
 
         f1 = vfs.Open("/home/file.txt");
         res = vfs.Write(f1, hello, sizeof(hello));
-        std::cerr << res << std::endl;
+        if (res == 0)
+                std::cerr << "WRITE FAILED: OK!" << std::endl;
+        else
+                std::cerr << "BUG #2 !!!" << std::endl;
         vfs.Close(f1);
-
-
-
 
         f1 = vfs.Open("/home/file.txt");
         f2 = vfs.Open("/home/file.txt");
         if (f1 && f2)
                 std::cerr << "2 READ-ONLY OPENING SUCCESS" << std::endl;
         else
-                std::cerr << "BUG #1!!!" << std::endl;
+                std::cerr << "BUG #3 !!!" << std::endl;
+                
         f3 = vfs.Create("/home/file.txt");
         if (!f3)
                 std::cerr << "NOT OPENED: OK!" << std::endl;
         else
-                std::cerr << "BUG #2!!!" << std::endl;
+                std::cerr << "BUG #4 !!!" << std::endl;
         vfs.Close(f1);
         vfs.Close(f2);
         vfs.Close(f3);
+
         f1 = vfs.Create("/home/file.txt");
         f2 = vfs.Create("/home/file.txt");
         if (!f2)
                 std::cerr << "NOT OPENED: OK!" << std::endl;
         else
-                std::cerr << "BUG #3!!!" << std::endl;
+                std::cerr << "BUG #5 !!!" << std::endl;
         vfs.Close(f1);
         vfs.Close(f2);
+
         f1 = vfs.Open("/home");
+        if (!f1)
+                std::cerr << "NOT OPENED: OK!" << std::endl;
+        else
+                std::cerr << "BUG #6 !!!" << std::endl;
 
         std::cerr << "NOW RUNNING READ/WRITE FILE SYSTEM TESTS" << std::endl;
-
+        
         write_file_to_vfs(vfs, "/usr/local/games/test1", "test/test1");
+        f1 = vfs.Open("/usr/local/games/test1");
+        f2 = vfs.Create("/usr/local/games/tmp");
+        while ((rc = vfs.Read(f1, buf, sizeof(buf))) > 0)
+                vfs.Write(f2, buf, rc);
+        vfs.Close(f1);
+        vfs.Close(f2);
+        read_file_from_vfs(vfs, "/usr/local/games/tmp", "test/test1.out");
+
         write_file_to_vfs(vfs, "/usr/local/games/test2", "test/test2");
         write_file_to_vfs(vfs, "/usr/local/games/test3", "test/test3");
         write_file_to_vfs(vfs, "/usr/local/games/new/test4", "test/test4");
