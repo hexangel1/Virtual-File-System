@@ -28,7 +28,7 @@ memcheck: $(PROJECT)
 
 tests: $(PROJECT)
 	cd test && ./build_tests.sh
-	valgrind ./$(PROJECT)
+	./$(PROJECT)
 	cd test && ./run_tests.sh
 
 tags: $(SOURCES) $(HEADERS)

@@ -67,7 +67,7 @@ void IVFS::Close(File *f)
         delete f;
 }
 
-size_t IVFS::Read(File *f, char *buf, size_t len)
+size_t IVFS::Read(File *f, char *buf, size_t len) const
 {
         if (!f->master->read_only) {
                 std::cerr << "File opened in write-only mode" << std::endl;
@@ -99,7 +99,7 @@ size_t IVFS::Read(File *f, char *buf, size_t len)
         return rc;
 }
 
-size_t IVFS::Write(File *f, const char *buf, size_t len)
+size_t IVFS::Write(File *f, const char *buf, size_t len) const
 {
         if (f->master->read_only) {
                 std::cerr << "File opened in read only mode" << std::endl;
@@ -217,7 +217,7 @@ void IVFS::DeleteOpenedFile(OpenedFile *ofptr)
         }
 }
 
-OpenedFile *IVFS::SearchOpenedFile(uint32_t idx)
+OpenedFile *IVFS::SearchOpenedFile(uint32_t idx) const
 {
         for (size_t i = 0; i < arr_size; i++) {
                 if (files[i] && files[i]->inode_idx == idx)
@@ -255,7 +255,7 @@ uint32_t IVFS::SearchInode(const char *path, bool write_perm)
         return idx;
 }
 
-uint32_t IVFS::SearchFileInDir(Inode *dir, const char *name)
+uint32_t IVFS::SearchFileInDir(Inode *dir, const char *name) const
 {
         uint32_t retval = -1;
         DirRecordList *ptr = ReadDirectory(dir);
@@ -292,7 +292,7 @@ uint32_t IVFS::CreateFileInDir(Inode *dir, const char *name, bool is_dir)
         return idx;
 }
 
-DirRecordList *IVFS::ReadDirectory(Inode *dir)
+DirRecordList *IVFS::ReadDirectory(Inode *dir) const
 {
         DirRecordList *tmp, *ptr = 0;
         DirRecord *arr;
@@ -314,7 +314,7 @@ DirRecordList *IVFS::ReadDirectory(Inode *dir)
         return ptr;
 }
 
-void IVFS::FreeDirRecordList(DirRecordList *ptr)
+void IVFS::FreeDirRecordList(DirRecordList *ptr) const
 {
         while (ptr) {
                 DirRecordList *tmp = ptr;
@@ -323,7 +323,7 @@ void IVFS::FreeDirRecordList(DirRecordList *ptr)
         }
 }
 
-void IVFS::MakeDirRecord(Inode *dir, const char *name, uint32_t idx)
+void IVFS::MakeDirRecord(Inode *dir, const char *name, uint32_t idx) const
 {
         DirRecord rec;
         strncpy(rec.filename, name, sizeof(rec.filename));
@@ -331,7 +331,7 @@ void IVFS::MakeDirRecord(Inode *dir, const char *name, uint32_t idx)
         AppendDirRecord(dir, &rec);
 }
 
-void IVFS::AppendDirRecord(Inode *dir, DirRecord *rec)
+void IVFS::AppendDirRecord(Inode *dir, DirRecord *rec) const
 {
         BlockAddr addr = GetBlockNum(dir, dir->blk_size - 1);
         DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
@@ -343,7 +343,7 @@ void IVFS::AppendDirRecord(Inode *dir, DirRecord *rec)
                 AddBlock(dir);
 }
 
-BlockAddr IVFS::GetBlockNum(Inode *in, uint32_t num)
+BlockAddr IVFS::GetBlockNum(Inode *in, uint32_t num) const
 {
         BlockAddr retval;
         if (num < 8) {
@@ -364,7 +364,7 @@ BlockAddr IVFS::GetBlockNum(Inode *in, uint32_t num)
         return retval;
 }
 
-BlockAddr IVFS::AddBlock(Inode *in)
+BlockAddr IVFS::AddBlock(Inode *in) const
 {
         BlockAddr new_block = bm.AllocateBlock();
         if (in->blk_size < 8)
@@ -377,7 +377,7 @@ BlockAddr IVFS::AddBlock(Inode *in)
         return new_block;
 }
 
-void IVFS::AddBlockToLev1(Inode *in, BlockAddr new_block)
+void IVFS::AddBlockToLev1(Inode *in, BlockAddr new_block) const
 {
         if (in->blk_size == 8)
                 in->block[8] = bm.AllocateBlock();
@@ -386,7 +386,7 @@ void IVFS::AddBlockToLev1(Inode *in, BlockAddr new_block)
         bm.UnmapBlock(block_lev1);
 }
 
-void IVFS::AddBlockToLev2(Inode *in, BlockAddr new_block)
+void IVFS::AddBlockToLev2(Inode *in, BlockAddr new_block) const
 {
         uint32_t lev1_num = (in->blk_size - 8 - addr_in_block) / addr_in_block;
         uint32_t lev0_num = (in->blk_size - 8 - addr_in_block) % addr_in_block;
@@ -401,7 +401,7 @@ void IVFS::AddBlockToLev2(Inode *in, BlockAddr new_block)
         bm.UnmapBlock(block_lev2);
 }
 
-void IVFS::FreeBlocks(Inode *in)
+void IVFS::FreeBlocks(Inode *in) const
 {
         for (uint32_t i = 0; i < in->blk_size; i++)
                 bm.FreeBlock(GetBlockNum(in, i));
@@ -419,7 +419,7 @@ void IVFS::FreeBlocks(Inode *in)
         in->blk_size = 0;
 }
 
-void IVFS::CreateRootDirectory()
+void IVFS::CreateRootDirectory() const
 {
         Inode root;
         memset(&root, 0, sizeof(root));
