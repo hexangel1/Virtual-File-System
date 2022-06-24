@@ -111,8 +111,10 @@ int main(void)
         write_file_to_vfs(vfs, "/usr/local/games/test1", "test/test1");
         f1 = vfs.Open("/usr/local/games/test1");
         f2 = vfs.Create("/usr/local/games/tmp");
-        while ((rc = vfs.Read(f1, buf, sizeof(buf))) > 0)
-                vfs.Write(f2, buf, rc);
+        if (f1 && f2) {
+                while ((rc = vfs.Read(f1, buf, sizeof(buf))) > 0)
+                        vfs.Write(f2, buf, rc);
+        }
         vfs.Close(f1);
         vfs.Close(f2);
         read_file_from_vfs(vfs, "/usr/local/games/tmp", "test/test1.out");
