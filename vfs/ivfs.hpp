@@ -6,20 +6,6 @@
 
 #define MAX_FILENAME_LEN 27
 
-struct OpenedFile {
-        int opened;
-        bool read_only;
-        uint32_t inode_idx;
-        struct Inode in;
-};
-
-struct File {
-        size_t cur_pos;
-        size_t cur_block;
-        char *block;
-        OpenedFile *master;
-};
-
 struct DirRecord {
         char filename[MAX_FILENAME_LEN + 1];
         uint32_t inode_idx;
@@ -28,6 +14,24 @@ struct DirRecord {
 struct DirRecordList {
         DirRecord rec;
         DirRecordList *next;
+};
+
+struct OpenedFile {
+private:
+        int opened;
+        bool read_only;
+        uint32_t inode_idx;
+        struct Inode in;
+        friend class IVFS;
+};
+
+struct File {
+private:
+        size_t cur_pos;
+        size_t cur_block;
+        char *block;
+        OpenedFile *master;
+        friend class IVFS;
 };
 
 class IVFS {
