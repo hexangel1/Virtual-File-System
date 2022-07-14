@@ -1,10 +1,14 @@
 #include <iostream>
+#include <cstdio>
 #include <cstring>
 #include <ctype.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "ivfs.hpp"
 
-IVFS::IVFS() : arr_size(8), arr_used(0)
+IVFS::IVFS() : arr_size(8), arr_used(0), dir_fd(-1)
 {
+        mtx = PTHREAD_MUTEX_INITIALIZER;
         files = new OpenedFile*[arr_size];
         for (size_t i = 0; i < arr_size; i++)
                 files[i] = 0;
@@ -12,6 +16,8 @@ IVFS::IVFS() : arr_size(8), arr_used(0)
 
 IVFS::~IVFS()
 {
+        if (dir_fd != -1)
+                close(dir_fd);
         for (size_t i = 0; i < arr_size; i++) {
                 if (files[i]) {
                         im.WriteInode(&files[i]->in, files[i]->inode_idx);
@@ -21,17 +27,22 @@ IVFS::~IVFS()
         delete []files;
 }
 
-bool IVFS::Init(bool makefs)
+bool IVFS::Mount(const char *path, bool makefs)
 {
         int res;
+        dir_fd = open(path, O_RDONLY | O_DIRECTORY);
+        if (dir_fd == -1) {
+                perror("open");
+                return false;
+        }
         if (makefs)
-                CreateFileSystem();
-        res = im.Init();
+                CreateFileSystem(dir_fd);
+        res = im.Init(dir_fd);
         if (!res) {
                 std::cerr << "Failed to start InodeManager" << std::endl;
                 return false;
         }
-        res = bm.Init();
+        res = bm.Init(dir_fd);
         if (!res) {
                 std::cerr << "Failed to start BlockManager" << std::endl;
                 return false;
@@ -42,116 +53,46 @@ bool IVFS::Init(bool makefs)
         return true;
 }
 
-File *IVFS::Open(const char *path)
+void IVFS::Umount()
 {
-        return NewFile(path, false);
+
 }
 
-File *IVFS::Create(const char *path)
+File IVFS::Open(const char *path, const char *perm)
 {
-        return NewFile(path, true);
+        return NewFile(path, perm[0] == 'w');
 }
 
-void IVFS::Close(File *f)
+void IVFS::CloseFile(OpenedFile *ofptr)
 {
-        if (!f)
-                return;
-        bm.UnmapBlock(f->block);
-        mtx.lock();
-        f->master->opened--;
-        if (f->master->opened == 0) {
-                im.WriteInode(&f->master->in, f->master->inode_idx);
-                DeleteOpenedFile(f->master);
+        pthread_mutex_lock(&mtx);
+        ofptr->opened--;
+        if (ofptr->opened == 0) {
+                im.WriteInode(&ofptr->in, ofptr->inode_idx);
+                DeleteOpenedFile(ofptr);
         }
-        mtx.unlock();
-        delete f;
+        pthread_mutex_unlock(&mtx);
 }
 
-size_t IVFS::Read(File *f, char *buf, size_t len) const
-{
-        if (!f->master->read_only) {
-                std::cerr << "File opened in write-only mode" << std::endl;
-                return 0;
-        }
-        size_t was_read = f->cur_block * block_size + f->cur_pos;
-        size_t rc = 0;
-        if (len > f->master->in.byte_size - was_read)
-                len = f->master->in.byte_size - was_read;
-        while (len > 0) {
-                size_t can_read = block_size - f->cur_pos;
-                if (len < can_read) {
-                        memcpy(buf + rc, f->block + f->cur_pos, len);
-                        f->cur_pos += len;
-                        rc += len;
-                        len = 0;
-                } else {
-                        memcpy(buf + rc, f->block + f->cur_pos, can_read);
-                        rc += can_read;
-                        f->cur_pos = 0;
-                        f->cur_block++;
-                        bm.UnmapBlock(f->block);
-                        BlockAddr next = GetBlockNum(&f->master->in,
-                                                     f->cur_block);
-                        f->block = (char*)bm.ReadBlock(next);
-                        len -= can_read;
-                }
-        }
-        return rc;
-}
-
-size_t IVFS::Write(File *f, const char *buf, size_t len) const
-{
-        if (f->master->read_only) {
-                std::cerr << "File opened in read only mode" << std::endl;
-                return 0;
-        }
-        size_t wc = 0;
-        while (len > 0) {
-                size_t can_write = block_size - f->cur_pos;
-                if (len < can_write) {
-                        memcpy(f->block + f->cur_pos, buf + wc, len);
-                        f->cur_pos += len;
-                        f->master->in.byte_size += len;
-                        wc += len;
-                        len = 0;
-                } else {
-                        memcpy(f->block + f->cur_pos, buf + wc, can_write);
-                        f->master->in.byte_size += can_write;
-                        wc += can_write;
-                        f->cur_pos = 0;
-                        f->cur_block++;
-                        bm.UnmapBlock(f->block);
-                        BlockAddr next = AddBlock(&f->master->in);
-                        f->block = (char*)bm.ReadBlock(next);
-                        len -= can_write;
-                }
-        }
-        return wc;
-}
-
-File *IVFS::NewFile(const char *path, bool write_perm)
+File IVFS::NewFile(const char *path, bool write_perm)
 {
         if (!CheckPath(path)) {
                 std::cerr << "Bad path: " << path << std::endl;
-                return nullptr;
+                return File();
         }
-        mtx.lock();
+        pthread_mutex_lock(&mtx);
         OpenedFile *ofptr = OpenFile(path, write_perm);
-        mtx.unlock();
+        pthread_mutex_unlock(&mtx);
         if (!ofptr)
-                return nullptr;
+                return File();
         if (write_perm && ofptr->in.byte_size) {
                 FreeBlocks(&ofptr->in);
                 ofptr->in.byte_size = 0;
                 ofptr->in.blk_size = 1;
                 ofptr->in.block[0] = bm.AllocateBlock();
         }
-        File *f = new File;
-        f->master = ofptr;
-        f->cur_pos = 0;
-        f->cur_block = 0;
-        f->block = (char*)bm.ReadBlock(f->master->in.block[0]);
-        return f;
+        char *first_block = (char*)bm.ReadBlock(ofptr->in.block[0]);
+        return File(ofptr, this, first_block);
 }
 
 OpenedFile *IVFS::OpenFile(const char *path, bool write_perm)
@@ -159,13 +100,13 @@ OpenedFile *IVFS::OpenFile(const char *path, bool write_perm)
         uint32_t idx = SearchInode(path, write_perm);
         if (idx == -1U) {
                 std::cerr << "File's inode not found" << std::endl;
-                return nullptr;
+                return 0;
         }
         Inode in;
         im.ReadInode(&in, idx);
         if (in.is_dir) {
                 std::cerr << "Open directory is not permitted" << std::endl;
-                return nullptr;
+                return 0;
         }
         OpenedFile *ofptr = SearchOpenedFile(idx);
         if (ofptr) {
@@ -174,7 +115,7 @@ OpenedFile *IVFS::OpenFile(const char *path, bool write_perm)
                         return ofptr;
                 }
                 std::cerr << "Incompatible file open mode" << std::endl;
-                return nullptr;
+                return 0;
         }
         ofptr = AddOpenedFile(idx, write_perm);
         return ofptr;
@@ -186,7 +127,7 @@ OpenedFile *IVFS::AddOpenedFile(uint32_t idx, bool write_perm)
                 size_t new_size = arr_size * 2;
                 OpenedFile **tmp = new OpenedFile*[new_size];
                 for (size_t i = 0; i < new_size; i++)
-                        tmp[i] = i < arr_size ? files[i] : nullptr;
+                        tmp[i] = i < arr_size ? files[i] : 0;
                 delete []files;
                 files = tmp;
                 arr_size = new_size;
@@ -202,7 +143,7 @@ OpenedFile *IVFS::AddOpenedFile(uint32_t idx, bool write_perm)
                         return files[i];
                 }
         }
-        return nullptr;
+        return 0;
 }
 
 void IVFS::DeleteOpenedFile(OpenedFile *ofptr)
@@ -223,7 +164,7 @@ OpenedFile *IVFS::SearchOpenedFile(uint32_t idx) const
                 if (files[i] && files[i]->inode_idx == idx)
                         return files[i];
         }
-        return nullptr;
+        return 0;
 }
 
 uint32_t IVFS::SearchInode(const char *path, bool write_perm)
@@ -298,7 +239,7 @@ DirRecordList *IVFS::ReadDirectory(Inode *dir) const
         DirRecord *arr;
         size_t records_amount = dir->byte_size / sizeof(DirRecord);
         size_t viewed = 0;
-        for (size_t i = 0; i < dir->blk_size; i++) {
+        for (off_t i = 0; i < dir->blk_size; i++) {
                 BlockAddr addr = GetBlockNum(dir, i);
                 arr = (DirRecord*)bm.ReadBlock(addr);
                 for (uint32_t j = 0; j < dirr_in_block; j++, viewed++) {
@@ -323,7 +264,7 @@ void IVFS::FreeDirRecordList(DirRecordList *ptr) const
         }
 }
 
-void IVFS::MakeDirRecord(Inode *dir, const char *name, uint32_t idx) const
+void IVFS::MakeDirRecord(Inode *dir, const char *name, uint32_t idx)
 {
         DirRecord rec;
         strncpy(rec.filename, name, sizeof(rec.filename));
@@ -331,7 +272,7 @@ void IVFS::MakeDirRecord(Inode *dir, const char *name, uint32_t idx) const
         AppendDirRecord(dir, &rec);
 }
 
-void IVFS::AppendDirRecord(Inode *dir, DirRecord *rec) const
+void IVFS::AppendDirRecord(Inode *dir, DirRecord *rec)
 {
         BlockAddr addr = GetBlockNum(dir, dir->blk_size - 1);
         DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
@@ -364,7 +305,7 @@ BlockAddr IVFS::GetBlockNum(Inode *in, uint32_t num) const
         return retval;
 }
 
-BlockAddr IVFS::AddBlock(Inode *in) const
+BlockAddr IVFS::AddBlock(Inode *in)
 {
         BlockAddr new_block = bm.AllocateBlock();
         if (in->blk_size < 8)
@@ -377,7 +318,7 @@ BlockAddr IVFS::AddBlock(Inode *in) const
         return new_block;
 }
 
-void IVFS::AddBlockToLev1(Inode *in, BlockAddr new_block) const
+void IVFS::AddBlockToLev1(Inode *in, BlockAddr new_block)
 {
         if (in->blk_size == 8)
                 in->block[8] = bm.AllocateBlock();
@@ -386,7 +327,7 @@ void IVFS::AddBlockToLev1(Inode *in, BlockAddr new_block) const
         bm.UnmapBlock(block_lev1);
 }
 
-void IVFS::AddBlockToLev2(Inode *in, BlockAddr new_block) const
+void IVFS::AddBlockToLev2(Inode *in, BlockAddr new_block)
 {
         uint32_t lev1_num = (in->blk_size - 8 - addr_in_block) / addr_in_block;
         uint32_t lev0_num = (in->blk_size - 8 - addr_in_block) % addr_in_block;
@@ -401,7 +342,7 @@ void IVFS::AddBlockToLev2(Inode *in, BlockAddr new_block) const
         bm.UnmapBlock(block_lev2);
 }
 
-void IVFS::FreeBlocks(Inode *in) const
+void IVFS::FreeBlocks(Inode *in)
 {
         for (uint32_t i = 0; i < in->blk_size; i++)
                 bm.FreeBlock(GetBlockNum(in, i));
@@ -419,7 +360,7 @@ void IVFS::FreeBlocks(Inode *in) const
         in->blk_size = 0;
 }
 
-void IVFS::CreateRootDirectory() const
+void IVFS::CreateRootDirectory()
 {
         Inode root;
         memset(&root, 0, sizeof(root));
@@ -432,11 +373,11 @@ void IVFS::CreateRootDirectory() const
         std::cerr << "Created root directory '/' [0]" << std::endl;
 }
 
-void IVFS::CreateFileSystem()
+void IVFS::CreateFileSystem(int dir_fd)
 {
-        InodeManager::CreateInodeSpace();
-        BlockManager::CreateBlockSpace();
-        BlockManager::CreateFreeBlockArray();
+        InodeManager::CreateInodeSpace(dir_fd);
+        BlockManager::CreateBlockSpace(dir_fd);
+        BlockManager::CreateFreeBlockArray(dir_fd);
 }
 
 const char *IVFS::PathParsing(const char *path, char *filename)
@@ -446,7 +387,7 @@ const char *IVFS::PathParsing(const char *path, char *filename)
         for (; *path && *path != '/'; path++, filename++)
                 *filename = *path;
         *filename = 0;
-        return *path == '/' ? path + 1 : nullptr;
+        return *path == '/' ? path + 1 : 0;
 }
 
 bool IVFS::CheckPath(const char *path)

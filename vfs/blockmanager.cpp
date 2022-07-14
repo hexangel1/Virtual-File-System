@@ -9,6 +9,7 @@
 
 BlockManager::BlockManager() : bitarray(0), size(0), fd(-1)
 {
+        mtx = PTHREAD_MUTEX_INITIALIZER;
         storage_fds = new int[IVFS::storage_amount];
         free_blocks = new uint32_t[IVFS::storage_amount];
         for (uint32_t i = 0; i < IVFS::storage_amount; i++) {
@@ -34,10 +35,10 @@ BlockManager::~BlockManager()
         delete []free_blocks;
 }
 
-bool BlockManager::Init()
+bool BlockManager::Init(int dir_fd)
 {
         void *p;
-        fd = open("free_blocks.bin", O_RDWR);
+        fd = openat(dir_fd, "free_blocks", O_RDWR);
         if (fd == -1) {
                 perror("BlockManager::Init(): open");
                 return false;
@@ -51,9 +52,9 @@ bool BlockManager::Init()
         bitarray = (char*)p;
         char storage_name[32];
         for (uint32_t i = 0; i < IVFS::storage_amount; i++) {
-                sprintf(storage_name, "storage%d.bin", i);
+                sprintf(storage_name, "storage%d", i);
                 free_blocks[i] = CalculateFreeBlocks(i);
-                storage_fds[i] = open(storage_name, O_RDWR);
+                storage_fds[i] = openat(dir_fd, storage_name, O_RDWR);
                 if (storage_fds[i] == -1) {
                         perror("BlockManager::Init(): open");
                         return false;
@@ -62,25 +63,25 @@ bool BlockManager::Init()
         return true;
 }
 
-BlockAddr BlockManager::AllocateBlock() const
+BlockAddr BlockManager::AllocateBlock()
 {
         BlockAddr addr;
-        mtx.lock();
+        pthread_mutex_lock(&mtx);
         uint32_t idx = MostFreeStorage();
         addr.storage_num = idx;
         addr.block_num = SearchFreeBlock(idx);
         free_blocks[idx]--;
-        mtx.unlock();
+        pthread_mutex_unlock(&mtx);
         return addr;
 }
 
-void BlockManager::FreeBlock(BlockAddr addr) const
+void BlockManager::FreeBlock(BlockAddr addr)
 {
         size_t idx = addr.storage_num * IVFS::storage_size + addr.block_num;
-        mtx.lock();
+        pthread_mutex_lock(&mtx);
         bitarray[idx / 8] |= 0x1 << idx % 8;
         free_blocks[addr.storage_num]++;
-        mtx.unlock();
+        pthread_mutex_unlock(&mtx);
 }
 
 void *BlockManager::ReadBlock(BlockAddr addr) const
@@ -147,9 +148,10 @@ uint32_t BlockManager::MostFreeStorage() const
         return idx;
 }
 
-bool BlockManager::CreateFreeBlockArray()
+bool BlockManager::CreateFreeBlockArray(int dir_fd)
 {
-        int fd = open("free_blocks.bin", O_RDWR | O_CREAT | O_TRUNC, 0644);
+        int fd = openat(dir_fd, "free_blocks",
+                        O_RDWR | O_CREAT | O_TRUNC, 0644);
         if (fd == -1) {
                 perror("BlockManager::CreateFreeBlockArray(): open");
                 return false;
@@ -172,12 +174,13 @@ bool BlockManager::CreateFreeBlockArray()
         return true;
 }
 
-bool BlockManager::CreateBlockSpace()
+bool BlockManager::CreateBlockSpace(int dir_fd)
 {
         for (uint32_t i = 0; i < IVFS::storage_amount; i++) {
                 char storage_name[32];
-                sprintf(storage_name, "storage%d.bin", i);
-                int fd = open(storage_name, O_RDWR | O_CREAT | O_TRUNC, 0644);
+                sprintf(storage_name, "storage%d", i);
+                int fd = openat(dir_fd, storage_name,
+                                O_RDWR | O_CREAT | O_TRUNC, 0644);
                 if (fd == -1) {
                         perror("BlockManager::CreateBlockSpace(): open");
                         return false;

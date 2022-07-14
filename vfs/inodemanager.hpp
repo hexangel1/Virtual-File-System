@@ -1,15 +1,15 @@
 #ifndef INODEMANAGER_HPP_SENTRY
 #define INODEMANAGER_HPP_SENTRY
 
-#include <cstdint>
-#include <mutex>
+#include <stdint.h>
+#include <pthread.h>
 #include "blockmanager.hpp"
 
 struct Inode {
         bool is_busy;
         bool is_dir;
-        uint64_t byte_size;
-        uint32_t blk_size;
+        off_t byte_size;
+        off_t blk_size;
         BlockAddr block[10];
 };
 
@@ -18,17 +18,17 @@ class InodeManager {
         uint32_t inodes_cache[inodes_cache_size];
         int inodes_used;
         int inodes_fd;
-        mutable std::mutex gf_mtx;
-        mutable std::mutex rw_mtx;
+        pthread_mutex_t gf_mtx;
+        pthread_mutex_t rw_mtx;
 public:
         InodeManager();
         ~InodeManager();
-        bool Init();
+        bool Init(int dir);
         uint32_t GetInode();
         void FreeInode(uint32_t idx);
-        bool ReadInode(Inode *ptr, uint32_t idx) const;
-        bool WriteInode(const Inode *ptr, uint32_t idx) const;
-        static bool CreateInodeSpace();
+        bool ReadInode(Inode *ptr, uint32_t idx);
+        bool WriteInode(const Inode *ptr, uint32_t idx);
+        static bool CreateInodeSpace(int dir_fd);
 private:
         void SearchFreeInodes();
 };

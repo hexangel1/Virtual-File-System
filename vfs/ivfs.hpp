@@ -3,6 +3,7 @@
 
 #include "inodemanager.hpp"
 #include "blockmanager.hpp"
+#include "file.hpp"
 
 #define MAX_FILENAME_LEN 27
 
@@ -17,21 +18,10 @@ struct DirRecordList {
 };
 
 struct OpenedFile {
-private:
-        int opened;
+        uint32_t inode_idx; 
+        unsigned int opened;
         bool read_only;
-        uint32_t inode_idx;
         struct Inode in;
-        friend class IVFS;
-};
-
-struct File {
-private:
-        size_t cur_pos;
-        size_t cur_block;
-        char *block;
-        OpenedFile *master;
-        friend class IVFS;
 };
 
 class IVFS {
@@ -40,26 +30,26 @@ class IVFS {
         OpenedFile **files;
         size_t arr_size;
         size_t arr_used;
-        mutable std::mutex mtx;
+        int dir_fd;
+        pthread_mutex_t mtx;
 public:
+        static const uint32_t max_file_amount = 100000; 
         static const uint32_t storage_amount = 4;
         static const uint32_t storage_size = 16384;
-        static const uint32_t block_size = 4096;
-        static const uint32_t max_file_amount = 100000;
-        static const uint32_t addr_in_block = block_size / sizeof(BlockAddr);
-        static const uint32_t dirr_in_block = block_size / sizeof(DirRecord);
-
+        static const off_t block_size = 4096;
+        static const off_t addr_in_block = block_size / sizeof(BlockAddr);
+        static const off_t dirr_in_block = block_size / sizeof(DirRecord);        
         IVFS();
         ~IVFS();
-        bool Init(bool makefs = false);
-        File *Open(const char *path);
-        File *Create(const char *path);
-        void Close(File *f);
-        size_t Read(File *f, char *buf, size_t len) const;
-        size_t Write(File *f, const char *buf, size_t len) const;
+        bool Mount(const char *path, bool makefs = false);
+        void Umount();
+        bool Create(const char *path);
+        bool Remove(const char *path);
+        File Open(const char *path, const char *flags);
 private:
-        File *NewFile(const char *path, bool write_perm);
+        File NewFile(const char *path, bool write_perm);
         OpenedFile *OpenFile(const char *path, bool write_perm);
+        void CloseFile(OpenedFile *ofptr);
         OpenedFile *AddOpenedFile(uint32_t idx, bool write_perm);
         void DeleteOpenedFile(OpenedFile *ofptr);
         OpenedFile *SearchOpenedFile(uint32_t idx) const;
@@ -68,17 +58,18 @@ private:
         uint32_t CreateFileInDir(Inode *dir, const char *name, bool is_dir);
         DirRecordList *ReadDirectory(Inode *dir) const;
         void FreeDirRecordList(DirRecordList *ptr) const;
-        void MakeDirRecord(Inode *dir, const char *file, uint32_t idx) const;
-        void AppendDirRecord(Inode *dir, DirRecord *rec) const;
+        void MakeDirRecord(Inode *dir, const char *file, uint32_t idx);
+        void AppendDirRecord(Inode *dir, DirRecord *rec);
         BlockAddr GetBlockNum(Inode *in, uint32_t num) const;
-        BlockAddr AddBlock(Inode *in) const;
-        void AddBlockToLev1(Inode *in, BlockAddr new_block) const;
-        void AddBlockToLev2(Inode *in, BlockAddr new_block) const;
-        void FreeBlocks(Inode *in) const;
-        void CreateRootDirectory() const;
-        static void CreateFileSystem();
+        BlockAddr AddBlock(Inode *in);
+        void AddBlockToLev1(Inode *in, BlockAddr new_block);
+        void AddBlockToLev2(Inode *in, BlockAddr new_block);
+        void FreeBlocks(Inode *in);
+        void CreateRootDirectory();
+        static void CreateFileSystem(int dir_fd);
         static const char *PathParsing(const char *path, char *filename);
         static bool CheckPath(const char *path);
+        friend class File;
 };
 
 #endif /* IVFS_HPP_SENTRY */

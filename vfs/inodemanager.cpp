@@ -7,6 +7,8 @@
 
 InodeManager::InodeManager()
 {
+        gf_mtx = PTHREAD_MUTEX_INITIALIZER;
+        rw_mtx = PTHREAD_MUTEX_INITIALIZER;
         for (int i = 0; i < inodes_cache_size; i++)
                 inodes_cache[i] = 0;
         inodes_used = inodes_cache_size;
@@ -19,9 +21,9 @@ InodeManager::~InodeManager()
                 close(inodes_fd);
 }
 
-bool InodeManager::Init()
+bool InodeManager::Init(int dir_fd)
 {
-        inodes_fd = open("inode_space.bin", O_RDWR);
+        inodes_fd = openat(dir_fd, "inode_space", O_RDWR);
         if (inodes_fd == -1) {
                 perror("InodeManager::Init(): open");
                 return false;
@@ -36,7 +38,7 @@ uint32_t InodeManager::GetInode()
         Inode in;
         memset(&in, 0, sizeof(in));
         in.is_busy = true;
-        gf_mtx.lock();
+        pthread_mutex_lock(&gf_mtx);
         if (inodes_used == inodes_cache_size)
                 SearchFreeInodes();
         if (inodes_used < inodes_cache_size) {
@@ -44,51 +46,51 @@ uint32_t InodeManager::GetInode()
                 inodes_used++;
         }
         WriteInode(&in, retval);
-        gf_mtx.unlock();
+        pthread_mutex_unlock(&gf_mtx);
         return retval;
 }
 
 void InodeManager::FreeInode(uint32_t idx)
 {
-        gf_mtx.lock();
+        pthread_mutex_lock(&gf_mtx);
         if (inodes_used > 0) {
                 inodes_used--;
                 inodes_cache[inodes_used] = idx;
         }
-        gf_mtx.unlock();
+        pthread_mutex_unlock(&gf_mtx);
 }
 
-bool InodeManager::ReadInode(Inode *ptr, uint32_t idx) const
+bool InodeManager::ReadInode(Inode *ptr, uint32_t idx)
 {
         int res;
-        rw_mtx.lock();
+        pthread_mutex_lock(&rw_mtx);
         res = lseek(inodes_fd, idx * sizeof(Inode), SEEK_SET);
         if (res == -1) {
-                rw_mtx.unlock();
+                pthread_mutex_unlock(&rw_mtx);
                 return false;
         }
         res = read(inodes_fd, ptr, sizeof(Inode));
-        rw_mtx.unlock();
+        pthread_mutex_unlock(&rw_mtx);
         return res == sizeof(Inode);
 }
 
-bool InodeManager::WriteInode(const Inode *ptr, uint32_t idx) const
+bool InodeManager::WriteInode(const Inode *ptr, uint32_t idx)
 {
         int res;
-        rw_mtx.lock();
+        pthread_mutex_lock(&rw_mtx);
         res = lseek(inodes_fd, idx * sizeof(Inode), SEEK_SET);
         if (res == -1) {
-                rw_mtx.unlock();
+                pthread_mutex_unlock(&rw_mtx);
                 return false;
         }
         res = write(inodes_fd, ptr, sizeof(Inode));
-        rw_mtx.unlock();
+        pthread_mutex_unlock(&rw_mtx);
         return res == sizeof(Inode);
 }
 
-bool InodeManager::CreateInodeSpace()
+bool InodeManager::CreateInodeSpace(int dir)
 {
-        int fd = open("inode_space.bin", O_RDWR | O_CREAT | O_TRUNC, 0644);
+        int fd = openat(dir, "inode_space", O_RDWR | O_CREAT | O_TRUNC, 0644);
         if (fd == -1) {
                 perror("InodeManager::CreateInodeSpace(): open");
                 return false;

@@ -3,7 +3,7 @@ SOURCES = $(wildcard *.cpp)
 HEADERS = $(SOURCES:.cpp=.hpp)
 OBJECTS = $(SOURCES:.cpp=.o)
 CXX = g++
-CXXFLAGS = -Wall -Wextra -g
+CXXFLAGS = -Wall -Wextra --std=c++98 -pedantic -g
 CTAGS = ctags
 AR = ar
 

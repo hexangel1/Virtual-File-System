@@ -1,9 +1,9 @@
 #ifndef BLOCKMANAGER_HPP_SENTRY
 #define BLOCKMANAGER_HPP_SENTRY
 
-#include <cstdint>
+#include <stdint.h>
 #include <cstddef>
-#include <mutex>
+#include <pthread.h>
 
 struct BlockAddr {
         uint32_t storage_num;
@@ -16,18 +16,18 @@ class BlockManager {
         int fd;
         int *storage_fds;
         uint32_t *free_blocks;
-        mutable std::mutex mtx;
+        pthread_mutex_t mtx;
 public:
         BlockManager();
         ~BlockManager();
-        bool Init();
-        BlockAddr AllocateBlock() const;
-        void FreeBlock(BlockAddr addr) const;
+        bool Init(int dir_fd);
+        BlockAddr AllocateBlock();
+        void FreeBlock(BlockAddr addr);
         void *ReadBlock(BlockAddr addr) const;
         void UnmapBlock(void *ptr) const;
         void SyncBlocks() const;
-        static bool CreateFreeBlockArray();
-        static bool CreateBlockSpace();
+        static bool CreateFreeBlockArray(int dir);
+        static bool CreateBlockSpace(int dir);
 private:
         uint32_t SearchFreeBlock(uint32_t idx) const;
         uint32_t CalculateFreeBlocks(uint32_t idx) const;
