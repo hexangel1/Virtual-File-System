@@ -1,4 +1,3 @@
-#include <iostream>
 #include <cstdio>
 #include <cstring>
 #include <ctype.h>
@@ -39,17 +38,17 @@ bool IVFS::Mount(const char *path, bool makefs)
                 CreateFileSystem(dir_fd);
         res = im.Init(dir_fd);
         if (!res) {
-                std::cerr << "Failed to start InodeManager" << std::endl;
+                fputs("Failed to start InodeManager\n", stderr);
                 return false;
         }
         res = bm.Init(dir_fd);
         if (!res) {
-                std::cerr << "Failed to start BlockManager" << std::endl;
+                fputs("Failed to start BlockManager\n", stderr);
                 return false;
         }
         if (makefs)
                 CreateRootDirectory();
-        std::cerr << "Virtual File System launched successfully" << std::endl;
+        fputs("Virtual File System started successfully\n", stderr);
         return true;
 }
 
@@ -77,7 +76,7 @@ void IVFS::CloseFile(OpenedFile *ofptr)
 File IVFS::NewFile(const char *path, bool write_perm)
 {
         if (!CheckPath(path)) {
-                std::cerr << "Bad path: " << path << std::endl;
+                fprintf(stderr, "Bad path: %s\n", path);
                 return File();
         }
         pthread_mutex_lock(&mtx);
@@ -99,13 +98,13 @@ OpenedFile *IVFS::OpenFile(const char *path, bool write_perm)
 {
         uint32_t idx = SearchInode(path, write_perm);
         if (idx == -1U) {
-                std::cerr << "File's inode not found" << std::endl;
+                fputs("File's inode not found\n", stderr);
                 return 0;
         }
         Inode in;
         im.ReadInode(&in, idx);
         if (in.is_dir) {
-                std::cerr << "Open directory is not permitted" << std::endl;
+                fputs("Open directory is not permitted\n", stderr);
                 return 0;
         }
         OpenedFile *ofptr = SearchOpenedFile(idx);
@@ -114,7 +113,7 @@ OpenedFile *IVFS::OpenFile(const char *path, bool write_perm)
                         ofptr->opened++;
                         return ofptr;
                 }
-                std::cerr << "Incompatible file open mode" << std::endl;
+                fputs("Incompatible file open mode\n", stderr);
                 return 0;
         }
         ofptr = AddOpenedFile(idx, write_perm);
@@ -174,18 +173,18 @@ uint32_t IVFS::SearchInode(const char *path, bool write_perm)
         Inode dir;
         do {
                 path = PathParsing(path, filename);
-                std::cerr << "Searching for file <" << filename <<
-                             "> in directory " << dir_idx << "..." << std::endl;
+                fprintf(stderr, "Searching for file <%s> in directory %d...\n",
+                        filename, dir_idx);
                 im.ReadInode(&dir, dir_idx);
                 if (!dir.is_dir) {
-                        std::cerr << dir_idx << " not directory" << std::endl;
+                        fprintf(stderr, "%d not directory\n", dir_idx);
                         return -1;
                 }
                 idx = SearchFileInDir(&dir, filename);
                 if (idx == 0xFFFFFFFF) {
-                        std::cerr << "File <" << filename << "> not found\n";
+                        fprintf(stderr, "File <%s> not found\n", filename);
                         if (!write_perm) {
-                                std::cerr << "Creation is not permitted\n";
+                                fputs("Creation is not permitted\n", stderr);
                                 return -1;
                         }
                         idx = CreateFileInDir(&dir, filename, path);
@@ -200,16 +199,16 @@ uint32_t IVFS::SearchFileInDir(Inode *dir, const char *name) const
 {
         uint32_t retval = -1;
         DirRecordList *ptr = ReadDirectory(dir);
-        std::cerr << "Files in current directory:" << std::endl;
+        fputs("Files in current directory:\n", stderr);
         for (DirRecordList *tmp = ptr; tmp; tmp = tmp->next) {
-                std::cerr << tmp->rec.filename << " [";
-                std::cerr << tmp->rec.inode_idx << "]" << std::endl;
+                fprintf(stderr, "%s [%d]\n",
+                        tmp->rec.filename, tmp->rec.inode_idx);
         }
         for (DirRecordList *tmp = ptr; tmp; tmp = tmp->next) {
                 if (!strcmp(tmp->rec.filename, name)) {
                         retval = tmp->rec.inode_idx;
-                        std::cerr << "Found: <" << tmp->rec.filename << "> [";
-                        std::cerr << tmp->rec.inode_idx << "]" << std::endl;
+                        fprintf(stderr, "Found: <%s> [%d]\n",
+                                tmp->rec.filename, tmp->rec.inode_idx);
                         break;
                 }
         }
@@ -229,7 +228,7 @@ uint32_t IVFS::CreateFileInDir(Inode *dir, const char *name, bool is_dir)
         uint32_t idx = im.GetInode();
         im.WriteInode(&in, idx);
         MakeDirRecord(dir, name, idx);
-        std::cerr << "Created file: " << name << " ["<< idx << "]" << std::endl;
+        fprintf(stderr, "Created file: %s [%d]\n", name, idx);
         return idx;
 }
 
@@ -370,7 +369,7 @@ void IVFS::CreateRootDirectory()
         root.blk_size = 1;
         root.block[0] = bm.AllocateBlock();
         im.WriteInode(&root, 0);
-        std::cerr << "Created root directory '/' [0]" << std::endl;
+        fputs("Created root directory '/' [0]\n", stderr);
 }
 
 void IVFS::CreateFileSystem(int dir_fd)
