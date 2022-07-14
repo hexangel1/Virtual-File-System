@@ -9,7 +9,7 @@ LIBDEPEND = vfs/libvfs.a
 CTAGS = ctags
 
 $(PROJECT): $(OBJECTS) $(LIBDEPEND)
-	$(CXX) $(CXXFLAGS) $(OBJECTS) $(LDLIBS) -o $@
+	$(CXX) $(CXXFLAGS) -o $@ $(OBJECTS) $(LDLIBS)
 
 %.o: %.cpp %.hpp
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
@@ -26,9 +26,11 @@ run: $(PROJECT)
 memcheck: $(PROJECT)
 	valgrind -s --leak-check=full --track-origins=yes ./$(PROJECT)
 
-tests: $(PROJECT)
+vfstest: $(LIBDEPEND)
+	$(CXX) $(CXXFLAGS) -o $@ test/$@.cpp $(LDLIBS)
 	cd test && ./build_tests.sh
-	./$(PROJECT)
+	valgrind ./$@
+	rm -f vfstest
 	cd test && ./run_tests.sh
 
 tags: $(SOURCES) $(HEADERS)
