@@ -3,12 +3,12 @@
 #include "file.hpp"
 #include "ivfs.hpp"
 
-File::File(OpenedFile *p, IVFS *vfs, char *first_block)
-        : cur_pos(0), cur_block(0), block(first_block), master(p), fs(vfs) {}
+File::File(OpenedFile *p, char *first_block)
+        : cur_pos(0), cur_block(0), block(first_block), master(p) {}
 
 ssize_t File::Read(char *buf, size_t len)
 {
-        if (!master->read_only) {
+        if (!master->perm_read) {
                 fputs("File opened in write-only mode", stderr);
                 return -1;
         }
@@ -28,10 +28,10 @@ ssize_t File::Read(char *buf, size_t len)
                         rc += can_read;
                         cur_pos = 0;
                         cur_block++;
-                        BlockAddr next = fs->GetBlockNum(&master->in,
+                        BlockAddr next = master->vfs->GetBlockNum(&master->in,
                                                          cur_block);
-                        fs->bm.UnmapBlock(block);
-                        block = (char*)fs->bm.ReadBlock(next);
+                        master->vfs->bm.UnmapBlock(block);
+                        block = (char*)master->vfs->bm.ReadBlock(next);
                         len -= can_read;
                 }
         }
@@ -40,8 +40,8 @@ ssize_t File::Read(char *buf, size_t len)
 
 ssize_t File::Write(const char *buf, size_t len)
 {
-        if (master->read_only) {
-                fputs("File opened in read only mode", stderr);
+        if (!master->perm_write) {
+                fputs("File opened in read-only mode", stderr);
                 return 0;
         }
         size_t wc = 0;
@@ -59,9 +59,9 @@ ssize_t File::Write(const char *buf, size_t len)
                         wc += can_write;
                         cur_pos = 0;
                         cur_block++;
-                        BlockAddr next = fs->AddBlock(&master->in);
-                        fs->bm.UnmapBlock(block);
-                        block = (char*)fs->bm.ReadBlock(next);
+                        BlockAddr next = master->vfs->AddBlock(&master->in);
+                        master->vfs->bm.UnmapBlock(block);
+                        block = (char*)master->vfs->bm.ReadBlock(next);
                         len -= can_write;
                 }
         }
@@ -92,9 +92,10 @@ off_t File::Lseek(off_t offset, int whence)
         cur_block = new_pos / IVFS::block_size;
         cur_pos = new_pos % IVFS::block_size;
         if (cur_block != old_block) {
-                fs->bm.UnmapBlock(block);
-                BlockAddr addr = fs->GetBlockNum(&master->in, cur_block);
-                block = (char*)fs->bm.ReadBlock(addr);
+                master->vfs->bm.UnmapBlock(block);
+                BlockAddr addr = master->vfs->GetBlockNum(&master->in,
+                                                          cur_block);
+                block = (char*)master->vfs->bm.ReadBlock(addr);
         }
         return new_pos;
 }
@@ -103,8 +104,13 @@ void File::Close()
 {
         if (!IsOpened())
                 return;
-        fs->bm.UnmapBlock(block);
-        fs->CloseFile(master);
+        master->vfs->bm.UnmapBlock(block);
+        master->vfs->CloseFile(master);
         master = 0;
+}
+
+off_t File::Size() const
+{
+        return master ? master->in.byte_size : 0;
 }
 

@@ -57,9 +57,39 @@ void IVFS::Umount()
 
 }
 
-File IVFS::Open(const char *path, const char *perm)
+File IVFS::Open(const char *path, const char *flags)
 {
-        return NewFile(path, perm[0] == 'w');
+        FileOpenFlags opf = { false, false, false, false, false };
+        if (!ParseOpenFlags(flags, opf))
+                return File();
+        if (!CheckPath(path)) {
+                fprintf(stderr, "Bad path: %s\n", path);
+                return File();
+        }
+        OpenedFile *ofptr = 0;
+        pthread_mutex_lock(&mtx);
+        int idx = SearchInode(path, opf.c_flag);
+        if (idx == -1) {
+                fputs("File's inode not found\n", stderr);
+                goto unlock_mutex;
+        }
+        if (IsDirectory(idx)) {
+                fputs("Open directory is not permitted\n", stderr);
+                goto unlock_mutex;
+        }
+        ofptr = OpenFile(idx, opf.r_flag, opf.w_flag);
+unlock_mutex:
+        pthread_mutex_unlock(&mtx);
+        if (!ofptr)
+                return File();
+        if (opf.t_flag && ofptr->in.byte_size > 0) {
+                FreeBlocks(&ofptr->in);
+                ofptr->in.byte_size = 0;
+                ofptr->in.blk_size = 1;
+                ofptr->in.block[0] = bm.AllocateBlock();
+        }
+        char *first_block = (char*)bm.ReadBlock(ofptr->in.block[0]);
+        return File(ofptr, first_block);
 }
 
 void IVFS::CloseFile(OpenedFile *ofptr)
@@ -73,54 +103,29 @@ void IVFS::CloseFile(OpenedFile *ofptr)
         pthread_mutex_unlock(&mtx);
 }
 
-File IVFS::NewFile(const char *path, bool write_perm)
+bool IVFS::IsDirectory(int idx)
 {
-        if (!CheckPath(path)) {
-                fprintf(stderr, "Bad path: %s\n", path);
-                return File();
-        }
-        pthread_mutex_lock(&mtx);
-        OpenedFile *ofptr = OpenFile(path, write_perm);
-        pthread_mutex_unlock(&mtx);
-        if (!ofptr)
-                return File();
-        if (write_perm && ofptr->in.byte_size) {
-                FreeBlocks(&ofptr->in);
-                ofptr->in.byte_size = 0;
-                ofptr->in.blk_size = 1;
-                ofptr->in.block[0] = bm.AllocateBlock();
-        }
-        char *first_block = (char*)bm.ReadBlock(ofptr->in.block[0]);
-        return File(ofptr, this, first_block);
-}
-
-OpenedFile *IVFS::OpenFile(const char *path, bool write_perm)
-{
-        uint32_t idx = SearchInode(path, write_perm);
-        if (idx == -1U) {
-                fputs("File's inode not found\n", stderr);
-                return 0;
-        }
         Inode in;
         im.ReadInode(&in, idx);
-        if (in.is_dir) {
-                fputs("Open directory is not permitted\n", stderr);
-                return 0;
-        }
+        return in.is_dir;
+}
+
+OpenedFile *IVFS::OpenFile(int idx, bool want_read, bool want_write)
+{
         OpenedFile *ofptr = SearchOpenedFile(idx);
         if (ofptr) {
-                if (ofptr->read_only && !write_perm) {
+                if (!ofptr->perm_write && !want_write) {
                         ofptr->opened++;
                         return ofptr;
                 }
                 fputs("Incompatible file open mode\n", stderr);
                 return 0;
         }
-        ofptr = AddOpenedFile(idx, write_perm);
+        ofptr = AddOpenedFile(idx, want_read, want_write);
         return ofptr;
 }
 
-OpenedFile *IVFS::AddOpenedFile(uint32_t idx, bool write_perm)
+OpenedFile *IVFS::AddOpenedFile(int idx, bool want_read, bool want_write)
 {
         if (arr_used == arr_size) {
                 size_t new_size = arr_size * 2;
@@ -136,8 +141,10 @@ OpenedFile *IVFS::AddOpenedFile(uint32_t idx, bool write_perm)
                         files[i] = new OpenedFile;
                         arr_used++;
                         files[i]->opened = 1;
-                        files[i]->read_only = !write_perm;
+                        files[i]->perm_read = want_read;
+                        files[i]->perm_write = want_write;
                         files[i]->inode_idx = idx;
+                        files[i]->vfs = this;
                         im.ReadInode(&files[i]->in, idx);
                         return files[i];
                 }
@@ -157,7 +164,7 @@ void IVFS::DeleteOpenedFile(OpenedFile *ofptr)
         }
 }
 
-OpenedFile *IVFS::SearchOpenedFile(uint32_t idx) const
+OpenedFile *IVFS::SearchOpenedFile(int idx) const
 {
         for (size_t i = 0; i < arr_size; i++) {
                 if (files[i] && files[i]->inode_idx == idx)
@@ -166,39 +173,38 @@ OpenedFile *IVFS::SearchOpenedFile(uint32_t idx) const
         return 0;
 }
 
-uint32_t IVFS::SearchInode(const char *path, bool write_perm)
+int IVFS::SearchInode(const char *path, bool create_perm)
 {
-        uint32_t dir_idx = 0, idx;
+        int dir_idx = 0, idx;
         char filename[MAX_FILENAME_LEN + 1];
-        Inode dir;
-        do {
+        while (path) {
                 path = PathParsing(path, filename);
-                fprintf(stderr, "Searching for file <%s> in directory %d...\n",
-                        filename, dir_idx);
-                im.ReadInode(&dir, dir_idx);
-                if (!dir.is_dir) {
-                        fprintf(stderr, "%d not directory\n", dir_idx);
-                        return -1;
-                }
-                idx = SearchFileInDir(&dir, filename);
-                if (idx == 0xFFFFFFFF) {
+                fprintf(stderr, "Searching for file <%s> ", filename);
+                fprintf(stderr, "in directory %d...\n", dir_idx);
+                idx = SearchFileInDir(dir_idx, filename);
+                if (idx == -1) {
                         fprintf(stderr, "File <%s> not found\n", filename);
-                        if (!write_perm) {
+                        if (!create_perm) {
                                 fputs("Creation is not permitted\n", stderr);
                                 return -1;
                         }
-                        idx = CreateFileInDir(&dir, filename, path);
-                        im.WriteInode(&dir, dir_idx);
+                        idx = CreateFileInDir(dir_idx, filename, path);
                 }
                 dir_idx = idx;
-        } while (path);
+        }
         return idx;
 }
 
-uint32_t IVFS::SearchFileInDir(Inode *dir, const char *name) const
+int IVFS::SearchFileInDir(int dir_idx, const char *name)
 {
-        uint32_t retval = -1;
-        DirRecordList *ptr = ReadDirectory(dir);
+        int retval = -1;
+        Inode dir;
+        im.ReadInode(&dir, dir_idx);
+        if (!dir.is_dir) {
+                fprintf(stderr, "%d not directory\n", dir_idx);
+                return -1;
+        }
+        DirRecordList *ptr = ReadDirectory(&dir);
         fputs("Files in current directory:\n", stderr);
         for (DirRecordList *tmp = ptr; tmp; tmp = tmp->next) {
                 fprintf(stderr, "%s [%d]\n",
@@ -216,18 +222,20 @@ uint32_t IVFS::SearchFileInDir(Inode *dir, const char *name) const
         return retval;
 }
 
-uint32_t IVFS::CreateFileInDir(Inode *dir, const char *name, bool is_dir)
+int IVFS::CreateFileInDir(int dir_idx, const char *name, bool is_dir)
 {
-        Inode in;
+        Inode in, dir;
         memset(&in, 0, sizeof(in));
         in.is_busy = true;
         in.is_dir = is_dir;
         in.byte_size = 0;
         in.blk_size = 1;
         in.block[0] = bm.AllocateBlock();
-        uint32_t idx = im.GetInode();
+        int idx = im.GetInode();
         im.WriteInode(&in, idx);
-        MakeDirRecord(dir, name, idx);
+        im.ReadInode(&dir, dir_idx);
+        MakeDirRecord(&dir, name, idx);
+        im.WriteInode(&dir, dir_idx);
         fprintf(stderr, "Created file: %s [%d]\n", name, idx);
         return idx;
 }
@@ -408,3 +416,32 @@ bool IVFS::CheckPath(const char *path)
         return len > 0 && len <= MAX_FILENAME_LEN;
 }
 
+bool IVFS::ParseOpenFlags(const char *flag, FileOpenFlags &opf)
+{
+        for (; *flag; flag++) {
+                switch (*flag) {
+                case 'r':
+                        opf.r_flag = true;
+                        break;
+                case 'w':
+                        opf.w_flag = true;
+                        break;
+                case 'a':
+                        opf.a_flag = true;
+                        break;
+                case 'c':
+                        opf.c_flag = true;
+                        break;
+                case 't':
+                        opf.t_flag = true; 
+                        break;
+                default:
+                        fprintf(stderr, "Unknown flag: %c\n", *flag);
+                        return false;
+                }
+        }
+        return true;
+}
+
+
+ 

@@ -2,6 +2,7 @@
 #define INODEMANAGER_HPP_SENTRY
 
 #include <stdint.h>
+#include <sys/types.h>
 #include <pthread.h>
 #include "blockmanager.hpp"
 
