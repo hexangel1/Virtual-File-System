@@ -6,7 +6,7 @@
 #include "file.hpp"
 
 struct DirRecord {
-        char filename[MAX_FILENAME_LEN + 1];
+        char filename[File::max_name_len];
         int32_t inode_idx;
 };
 

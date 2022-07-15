@@ -4,8 +4,6 @@
 #include <stddef.h>
 #include <sys/types.h>
 
-#define MAX_FILENAME_LEN 27
-
 struct OpenedFile;
 
 class File {
@@ -14,11 +12,6 @@ class File {
         char *block;
         OpenedFile *master;
 public:
-        enum {
-                seek_set = 0,
-                seek_cur = 1,
-                seek_end = 2
-        };
         File(OpenedFile *ofptr = 0, char *first_block = 0);
         ssize_t Read(char *buf, size_t len);
         ssize_t Write(const char *buf, size_t len);
@@ -26,6 +19,12 @@ public:
         void Close();
         off_t Size() const;
         bool IsOpened() const { return master; }
+        enum {
+                seek_set = 0,
+                seek_cur = 1,
+                seek_end = 2
+        }; 
+        static const int max_name_len = 28;
 };
 
 #endif /* FILE_HPP_SENTRY */

@@ -176,7 +176,7 @@ OpenedFile *IVFS::SearchOpenedFile(int idx) const
 int IVFS::SearchInode(const char *path, bool create_perm)
 {
         int dir_idx = 0, idx;
-        char filename[MAX_FILENAME_LEN + 1];
+        char filename[File::max_name_len];
         while (path) {
                 path = PathParsing(path, filename);
                 fprintf(stderr, "Searching for file <%s> ", filename);
@@ -404,7 +404,7 @@ bool IVFS::CheckPath(const char *path)
         int len = 0;
         for (path++; *path; path++) {
                 if (*path == '/') {
-                        if (len == 0 || len > MAX_FILENAME_LEN)
+                        if (len == 0 || len >= File::max_name_len)
                                 return false;
                         len = 0;
                         continue;
@@ -413,7 +413,7 @@ bool IVFS::CheckPath(const char *path)
                         return false;
                 len++;
         }
-        return len > 0 && len <= MAX_FILENAME_LEN;
+        return len > 0 && len < File::max_name_len;
 }
 
 bool IVFS::ParseOpenFlags(const char *flag, FileOpenFlags &opf)
