@@ -59,8 +59,8 @@ private:
         int CreateFileInDir(int dir_idx, const char *name, bool is_dir);
         DirRecordList *ReadDirectory(Inode *dir) const;
         void FreeDirRecordList(DirRecordList *ptr) const;
-        void MakeDirRecord(Inode *dir, const char *file, uint32_t idx);
-        void AppendDirRecord(Inode *dir, DirRecord *rec);
+        void CreateDirRecord(Inode *dir, const char *file, uint32_t idx);
+        void DeleteDirRecord(Inode *dir, const char *filename);
         BlockAddr GetBlockNum(Inode *in, uint32_t num) const;
         BlockAddr AddBlock(Inode *in);
         void AddBlockToLev1(Inode *in, BlockAddr new_block);

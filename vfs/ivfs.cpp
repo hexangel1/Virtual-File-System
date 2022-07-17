@@ -234,33 +234,35 @@ int IVFS::CreateFileInDir(int dir_idx, const char *name, bool is_dir)
         int idx = im.GetInode();
         im.WriteInode(&in, idx);
         im.ReadInode(&dir, dir_idx);
-        MakeDirRecord(&dir, name, idx);
+        CreateDirRecord(&dir, name, idx);
         im.WriteInode(&dir, dir_idx);
+        if (is_dir) {
+                DirRecord *arr = (DirRecord*)bm.ReadBlock(in.block[0]);
+                memset(arr, 0, block_size);
+                bm.UnmapBlock(arr);
+        }
         fprintf(stderr, "Created file: %s [%d]\n", name, idx);
         return idx;
 }
 
 DirRecordList *IVFS::ReadDirectory(Inode *dir) const
 {
-        DirRecordList *tmp, *ptr = 0;
-        DirRecord *arr;
-        size_t records_amount = dir->byte_size / sizeof(DirRecord);
-        size_t viewed = 0;
+        DirRecordList *retval = 0;
         for (off_t i = 0; i < dir->blk_size; i++) {
                 BlockAddr addr = GetBlockNum(dir, i);
-                arr = (DirRecord*)bm.ReadBlock(addr);
-                for (uint32_t j = 0; j < dirr_in_block; j++, viewed++) {
-                        if (viewed == records_amount)
-                                break;
-                        tmp = new DirRecordList;
+                DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
+                for (off_t j = 0; j < dirr_in_block; j++) {
+                        if (!arr[j].name[0])
+                                continue;
+                        DirRecordList *tmp = new DirRecordList;
                         tmp->filename = Strdup(arr[j].name);
                         tmp->inode_idx = atoi(arr[j].idx);
-                        tmp->next = ptr;
-                        ptr = tmp;
+                        tmp->next = retval;
+                        retval = tmp;
                 }
                 bm.UnmapBlock(arr);
         }
-        return ptr;
+        return retval;
 }
 
 void IVFS::FreeDirRecordList(DirRecordList *ptr) const
@@ -273,25 +275,44 @@ void IVFS::FreeDirRecordList(DirRecordList *ptr) const
         }
 }
 
-void IVFS::MakeDirRecord(Inode *dir, const char *filename, uint32_t inode_idx)
+void IVFS::CreateDirRecord(Inode *dir, const char *filename, uint32_t inode_idx)
 {
-        DirRecord rec;
-        memset(&rec, 0, sizeof(rec));
-        strcpy(rec.name, filename);
-        sprintf(rec.idx, "%d", inode_idx);
-        AppendDirRecord(dir, &rec);
+        for (off_t i = 0; i < dir->blk_size; i++) {
+                BlockAddr addr = GetBlockNum(dir, i);
+                DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
+                for (off_t j = 0; j < dirr_in_block; j++) {
+                        if (!arr[j].name[0]) {
+                                memset(&arr[j], 0, sizeof(arr[j]));
+                                strcpy(arr[j].name, filename);
+                                sprintf(arr[j].idx, "%d", inode_idx);
+                                bm.UnmapBlock(arr);
+                                return;
+                        }
+                }
+                bm.UnmapBlock(arr);
+        }
+        BlockAddr addr = AddBlock(dir);
+        DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
+        memset(arr, 0, block_size);
+        strcpy(arr[0].name, filename);
+        sprintf(arr[0].idx, "%d", inode_idx);
+        bm.UnmapBlock(arr);
 }
 
-void IVFS::AppendDirRecord(Inode *dir, DirRecord *rec)
+void IVFS::DeleteDirRecord(Inode *dir, const char *filename)
 {
-        BlockAddr addr = GetBlockNum(dir, dir->blk_size - 1);
-        DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
-        size_t last_rec = (dir->byte_size % block_size) / sizeof(DirRecord);
-        arr[last_rec] = *rec;
-        dir->byte_size += sizeof(DirRecord);
-        bm.UnmapBlock(arr);
-        if (last_rec == dirr_in_block - 1)
-                AddBlock(dir);
+        for (off_t i = 0; i < dir->blk_size; i++) {
+                BlockAddr addr = GetBlockNum(dir, i);
+                DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
+                for (off_t j = 0; j < dirr_in_block; j++) {
+                        if (!strcmp(arr[j].name, filename)) {
+                                memset(&arr[j], 0, sizeof(arr[j]));
+                                bm.UnmapBlock(arr);
+                                return;
+                        }
+                }
+                bm.UnmapBlock(arr);
+        }
 }
 
 BlockAddr IVFS::GetBlockNum(Inode *in, uint32_t num) const
