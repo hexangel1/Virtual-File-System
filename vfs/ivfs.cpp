@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctype.h>
 #include <fcntl.h>
@@ -207,14 +208,13 @@ int IVFS::SearchFileInDir(int dir_idx, const char *name)
         DirRecordList *ptr = ReadDirectory(&dir);
         fputs("Files in current directory:\n", stderr);
         for (DirRecordList *tmp = ptr; tmp; tmp = tmp->next) {
-                fprintf(stderr, "%s [%d]\n",
-                        tmp->rec.filename, tmp->rec.inode_idx);
+                fprintf(stderr, "%s [%d]\n", tmp->filename, tmp->inode_idx);
         }
         for (DirRecordList *tmp = ptr; tmp; tmp = tmp->next) {
-                if (!strcmp(tmp->rec.filename, name)) {
-                        retval = tmp->rec.inode_idx;
+                if (!strcmp(tmp->filename, name)) {
+                        retval = tmp->inode_idx;
                         fprintf(stderr, "Found: <%s> [%d]\n",
-                                tmp->rec.filename, tmp->rec.inode_idx);
+                                tmp->filename, tmp->inode_idx);
                         break;
                 }
         }
@@ -253,7 +253,8 @@ DirRecordList *IVFS::ReadDirectory(Inode *dir) const
                         if (viewed == records_amount)
                                 break;
                         tmp = new DirRecordList;
-                        tmp->rec = arr[j];
+                        tmp->filename = Strdup(arr[j].name);
+                        tmp->inode_idx = atoi(arr[j].idx);
                         tmp->next = ptr;
                         ptr = tmp;
                 }
@@ -267,15 +268,17 @@ void IVFS::FreeDirRecordList(DirRecordList *ptr) const
         while (ptr) {
                 DirRecordList *tmp = ptr;
                 ptr = ptr->next;
+                delete[] tmp->filename;
                 delete tmp;
         }
 }
 
-void IVFS::MakeDirRecord(Inode *dir, const char *name, uint32_t idx)
+void IVFS::MakeDirRecord(Inode *dir, const char *filename, uint32_t inode_idx)
 {
         DirRecord rec;
-        strncpy(rec.filename, name, sizeof(rec.filename));
-        rec.inode_idx = idx;
+        memset(&rec, 0, sizeof(rec));
+        strcpy(rec.name, filename);
+        sprintf(rec.idx, "%d", inode_idx);
         AppendDirRecord(dir, &rec);
 }
 
@@ -443,5 +446,10 @@ bool IVFS::ParseOpenFlags(const char *flag, FileOpenFlags &opf)
         return true;
 }
 
+char *IVFS::Strdup(const char *str)
+{
+        char *copy = new char[strlen(str) + 1];
+        strcpy(copy, str);
+        return copy;
+}
 
- 

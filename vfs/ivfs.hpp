@@ -5,13 +5,9 @@
 #include "blockmanager.hpp"
 #include "file.hpp"
 
-struct DirRecord {
-        char filename[File::max_name_len];
-        int32_t inode_idx;
-};
-
 struct DirRecordList {
-        DirRecord rec;
+        const char *filename;
+        int32_t inode_idx;
         DirRecordList *next;
 };
 
@@ -31,6 +27,10 @@ class IVFS {
                 bool a_flag;
                 bool c_flag;
                 bool t_flag;
+        };
+        struct DirRecord {
+                char name[53];
+                char idx[11];
         };
         InodeManager im;
         BlockManager bm;
@@ -71,6 +71,7 @@ private:
         static const char *PathParsing(const char *path, char *filename);
         static bool CheckPath(const char *path);
         static bool ParseOpenFlags(const char *flags, FileOpenFlags &opf);
+        static char *Strdup(const char *str);
 public:
         static const int max_file_amount = 100000; 
         static const uint32_t storage_amount = 4;

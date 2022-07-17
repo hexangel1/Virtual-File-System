@@ -24,7 +24,7 @@ public:
                 seek_cur = 1,
                 seek_end = 2
         }; 
-        static const int max_name_len = 28;
+        static const int max_name_len = 52;
 };
 
 #endif /* FILE_HPP_SENTRY */
