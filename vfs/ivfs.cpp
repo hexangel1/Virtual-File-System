@@ -93,6 +93,54 @@ unlock_mutex:
         return File(ofptr, first_block);
 }
 
+bool IVFS::Remove(const char *path, bool recursive)
+{
+        char dirname[File::max_name_len];
+        char filename[File::max_name_len];
+        if (!CheckPath(path)) {
+                fprintf(stderr, "Bad path: %s\n", path);
+                return false;
+        }
+        GetDirectory(path, dirname, filename);
+        int dir_idx = dirname[0] ? SearchInode(dirname, false) : 0;
+        int idx = SearchInode(filename, false);
+        if (recursive) {
+                RecursiveDeletion(idx);
+        } else {
+                if (IsDirectory(idx)) {
+                        fprintf(stderr, "Use recursive = true\n");
+                        return false;
+                }
+                DeleteFile(idx);
+        }
+        Inode dir_in;
+        im.ReadInode(&dir_in, dir_idx); 
+        DeleteDirRecord(&dir_in, filename);
+        im.WriteInode(&dir_in, dir_idx);
+        return true;
+}
+
+void IVFS::RecursiveDeletion(int idx)
+{
+        Inode in;
+        im.ReadInode(&in, idx);
+        if (in.is_dir) {
+                DirRecordList *ls = ReadDirectory(&in);
+                for (DirRecordList *tmp = ls; tmp; tmp = tmp->next)
+                        RecursiveDeletion(ls->inode_idx);
+                FreeDirRecordList(ls);
+        }
+        DeleteFile(idx);
+}
+
+void IVFS::DeleteFile(int idx)
+{
+        Inode in;
+        im.ReadInode(&in, idx);
+        FreeBlocks(&in);
+        im.FreeInode(idx);
+}
+
 void IVFS::CloseFile(OpenedFile *ofptr)
 {
         pthread_mutex_lock(&mtx);
@@ -375,18 +423,26 @@ void IVFS::AddBlockToLev2(Inode *in, BlockAddr new_block)
 
 void IVFS::FreeBlocks(Inode *in)
 {
-        for (uint32_t i = 0; i < in->blk_size; i++)
+        for (off_t i = 0; i < in->blk_size; i++)
                 bm.FreeBlock(GetBlockNum(in, i));
-        if (in->blk_size > 8)
+        if (in->blk_size > 8) {
+                BlockAddr *block_lev1 = (BlockAddr*)bm.ReadBlock(in->block[8]);
+                off_t r = in->blk_size - 8;
+                if (r > addr_in_block)
+                        r = addr_in_block;
+                for (off_t i = 0; i < r; i++)
+                        bm.FreeBlock(block_lev1[i]);
+                bm.UnmapBlock(block_lev1);
                 bm.FreeBlock(in->block[8]);
-        if (in->blk_size > 8 + addr_in_block) {
+        }
+/*        if (in->blk_size > 8 + addr_in_block) {
                 BlockAddr *block_lev2 = (BlockAddr*)bm.ReadBlock(in->block[9]);
-                uint32_t r = (in->blk_size - 8 - addr_in_block) / addr_in_block;
-                for (uint32_t i = 0; i < r + 1; i++)
+                off_t r = (in->blk_size - 8 - addr_in_block) / addr_in_block;
+                for (off_t i = 0; i < r + 1; i++)
                         bm.FreeBlock(block_lev2[i]);
                 bm.UnmapBlock(block_lev2);
                 bm.FreeBlock(in->block[9]);
-        }
+        }*/
         in->byte_size = 0;
         in->blk_size = 0;
 }
@@ -472,5 +528,20 @@ char *IVFS::Strdup(const char *str)
         char *copy = new char[strlen(str) + 1];
         strcpy(copy, str);
         return copy;
+}
+
+void IVFS::GetDirectory(const char *path, char *dir, char *file)
+{
+        const char *tmp;
+        for (tmp = path; *tmp; tmp++)
+                ;
+        for (; tmp != path && *tmp != '/'; tmp--)
+                ;
+        for (; path != tmp; path++, dir++)
+                *dir = *path;
+        *dir = 0;
+        for (path++; *path; path++, file++)
+                *file = *path;
+        *file = 0;
 }
 

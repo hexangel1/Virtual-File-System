@@ -45,9 +45,11 @@ public:
         bool Mount(const char *path, bool makefs = false);
         void Umount();
         bool Create(const char *path);
-        bool Remove(const char *path);
+        bool Remove(const char *path, bool recursive = false);
         File Open(const char *path, const char *flags);
 private:
+        void RecursiveDeletion(int idx);
+        void DeleteFile(int idx);
         OpenedFile *OpenFile(int idx, bool want_read, bool want_write);
         void CloseFile(OpenedFile *ofptr);
         bool IsDirectory(int idx);
@@ -71,6 +73,7 @@ private:
         static const char *PathParsing(const char *path, char *filename);
         static bool CheckPath(const char *path);
         static bool ParseOpenFlags(const char *flags, FileOpenFlags &opf);
+        static void GetDirectory(const char *path, char *dir, char *file);
         static char *Strdup(const char *str);
 public:
         static const int max_file_amount = 100000; 

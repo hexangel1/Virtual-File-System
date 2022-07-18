@@ -52,6 +52,9 @@ uint32_t InodeManager::GetInode()
 
 void InodeManager::FreeInode(uint32_t idx)
 {
+        Inode in;
+        memset(&in, 0, sizeof(in));
+        WriteInode(&in, idx);
         pthread_mutex_lock(&gf_mtx);
         if (inodes_used > 0) {
                 inodes_used--;

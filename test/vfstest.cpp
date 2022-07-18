@@ -161,6 +161,11 @@ int main(void)
         read_file_from_vfs(vfs, "/usr/bin/a/b/c/d/e/test19", "test/test19.out");
         read_file_from_vfs(vfs, "/usr/bin/a/b/c/d/e/f/test20",
                                 "test/test20.out");
+        vfs.Remove("/usr", true);
+        vfs.Remove("/etc", true);
+        vfs.Remove("/home", true);
+        vfs.Remove("/test7");
+        vfs.Remove("/test8");
         return 0;
 }
 
