@@ -49,7 +49,6 @@ public:
         File Open(const char *path, const char *flags);
 private:
         void RecursiveDeletion(int idx);
-        void DeleteFile(int idx);
         OpenedFile *OpenFile(int idx, bool want_read, bool want_write);
         void CloseFile(OpenedFile *ofptr);
         bool IsDirectory(int idx);
@@ -61,8 +60,8 @@ private:
         int CreateFileInDir(int dir_idx, const char *name, bool is_dir);
         DirRecordList *ReadDirectory(Inode *dir) const;
         void FreeDirRecordList(DirRecordList *ptr) const;
-        void CreateDirRecord(Inode *dir, const char *file, uint32_t idx);
-        void DeleteDirRecord(Inode *dir, const char *filename);
+        void CreateDirRecord(int dir_idx, const char *filename, int idx);
+        void DeleteDirRecord(int dir_idx, const char *filename);
         BlockAddr GetBlockNum(Inode *in, uint32_t num) const;
         BlockAddr AddBlock(Inode *in);
         void AddBlockToLev1(Inode *in, BlockAddr new_block);
