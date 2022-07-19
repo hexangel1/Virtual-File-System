@@ -6,7 +6,7 @@
 
 static void write_file_to_vfs(IVFS &vfs, const char *path, const char *file)
 {
-        File f;
+        File *f;
         int fd = open(file, O_RDONLY);
         if (fd == -1) {
                 perror(file);
@@ -14,21 +14,21 @@ static void write_file_to_vfs(IVFS &vfs, const char *path, const char *file)
         }
         std::cerr << "WRITE " << file << " TO VFS PATH: " << path << std::endl;
         f = vfs.Open(path, "wc");
-        if (!f.IsOpened()) {
+        if (!f) {
                 std::cerr << "VFS: file not opened: " << path << std::endl;
                 return;
         }
         char buf[139];
         int rc;
         while ((rc = read(fd, buf, sizeof(buf))) > 0)
-                f.Write(buf, rc);
+                vfs.Write(f, buf, rc);
         close(fd);
-        f.Close();
+        vfs.Close(f);
 }
 
 static void read_file_from_vfs(IVFS &vfs, const char *path, const char *file)
 {
-        File f;
+        File *f;
         int fd = open(file, O_WRONLY | O_CREAT, 0644);
         if (fd == -1) {
                 perror(file);
@@ -36,16 +36,16 @@ static void read_file_from_vfs(IVFS &vfs, const char *path, const char *file)
         }
         std::cerr << "READ " << file << " ON VFS PATH: " << path << std::endl;
         f = vfs.Open(path, "r");
-        if (!f.IsOpened()) {
+        if (!f) {
                 std::cerr << "VFS: file not opened: " << path << std::endl;
                 return;
         }
         char buf[333];
         int rc;
-        while ((rc = f.Read(buf, sizeof(buf))) > 0)
+        while ((rc = vfs.Read(f, buf, sizeof(buf))) > 0)
                 write(fd, buf, rc);
         close(fd);
-        f.Close();
+        vfs.Close(f);
 }
 
 int main(void)
@@ -53,54 +53,54 @@ int main(void)
         const char hello[] = "Hello World";
         char buf[128];
         int res, rc;
-        File f1, f2, f3;
+        File *f1, *f2, *f3;
         IVFS vfs;
         vfs.Mount("./work_dir/", true);
         std::cerr << "SIMPLE OPEN/CLOSE TESTS" << std::endl;
 
         f1 = vfs.Open("/home/file.txt", "wc");
-        res = f1.Read(buf, sizeof(buf));
+        res = vfs.Read(f1, buf, sizeof(buf));
         if (res == 0)
                 std::cerr << "READ FAILED: OK!" << std::endl;
         else
                 std::cerr << "BUG #1 !!!" << std::endl;
-        f1.Close();
+        vfs.Close(f1);
 
         f1 = vfs.Open("/home/file.txt", "r");
-        res = f1.Write(hello, sizeof(hello));
+        res = vfs.Write(f1, hello, sizeof(hello));
         if (res == 0)
                 std::cerr << "WRITE FAILED: OK!" << std::endl;
         else
                 std::cerr << "BUG #2 !!!" << std::endl;
-        f1.Close();
+        vfs.Close(f1);
 
         f1 = vfs.Open("/home/file.txt", "r");
         f2 = vfs.Open("/home/file.txt", "r");
-        if (f1.IsOpened() && f2.IsOpened())
+        if (f1 && f2)
                 std::cerr << "2 READ-ONLY OPENING SUCCESS" << std::endl;
         else
                 std::cerr << "BUG #3 !!!" << std::endl;
 
         f3 = vfs.Open("/home/file.txt", "r");
-        if (!f3.IsOpened())
+        if (!f3)
                 std::cerr << "NOT OPENED: OK!" << std::endl;
         else
                 std::cerr << "BUG #4 !!!" << std::endl;
-        f1.Close();
-        f2.Close();
-        f3.Close();
+        vfs.Close(f1);
+        vfs.Close(f2);
+        vfs.Close(f3);
 
         f1 = vfs.Open("/home/file.txt", "wc");
         f2 = vfs.Open("/home/file.txt", "wc");
-        if (!f2.IsOpened())
+        if (!f2)
                 std::cerr << "NOT OPENED: OK!" << std::endl;
         else
                 std::cerr << "BUG #5 !!!" << std::endl;
-        f1.Close();
-        f2.Close();
+        vfs.Close(f1);
+        vfs.Close(f2);
 
         f1 = vfs.Open("/home", "r");
-        if (!f1.IsOpened())
+        if (!f1)
                 std::cerr << "NOT OPENED: OK!" << std::endl;
         else
                 std::cerr << "BUG #6 !!!" << std::endl;
@@ -110,13 +110,12 @@ int main(void)
         write_file_to_vfs(vfs, "/usr/local/games/test1", "test/test1");
         f1 = vfs.Open("/usr/local/games/test1", "r");
         f2 = vfs.Open("/usr/local/games/tmp", "wc");
-        if (f1.IsOpened() && f2.IsOpened()) {
-                while ((rc = f1.Read(buf, sizeof(buf))) > 0)
-                        f2.Write(buf, rc);
+        if (f1 && f2) {
+                while ((rc = vfs.Read(f1, buf, sizeof(buf))) > 0)
+                        vfs.Write(f2, buf, rc);
         }
-        std::cout << f1.Lseek(0, File::seek_end) + 1 << std::endl;
-        f1.Close();
-        f2.Close();
+        vfs.Close(f1);
+        vfs.Close(f2);
         read_file_from_vfs(vfs, "/usr/local/games/tmp", "test/test1.out");
 
         write_file_to_vfs(vfs, "/usr/local/games/test2", "test/test2");

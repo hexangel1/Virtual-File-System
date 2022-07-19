@@ -3,7 +3,6 @@
 
 #include "inodemanager.hpp"
 #include "blockmanager.hpp"
-#include "file.hpp"
 
 struct DirRecordList {
         const char *filename;
@@ -20,6 +19,15 @@ struct OpenedFile {
         class IVFS *vfs;
 };
 
+struct File {
+private:
+        off_t cur_pos;
+        off_t cur_block;
+        char *block;
+        OpenedFile *master;
+        friend class IVFS;
+};
+
 class IVFS {
         struct FileOpenFlags {
                 bool r_flag;
@@ -32,11 +40,13 @@ class IVFS {
                 char name[53];
                 char idx[11];
         };
+        struct OpenedFileItem {
+                OpenedFile *file;
+                OpenedFileItem *next;
+        };
         InodeManager im;
         BlockManager bm;
-        OpenedFile **files;
-        size_t arr_size;
-        size_t arr_used;
+        OpenedFileItem *first;
         int dir_fd;
         pthread_mutex_t mtx;
 public:
@@ -46,7 +56,11 @@ public:
         void Umount();
         bool Create(const char *path);
         bool Remove(const char *path, bool recursive = false);
-        File Open(const char *path, const char *flags);
+        File *Open(const char *path, const char *flags);
+        void Close(File *fp);
+        ssize_t Read(File *fp, char *buf, size_t len);
+        ssize_t Write(File *fp, const char *buf, size_t len);
+        off_t Lseek(File *fp, off_t offset, int whence);
 private:
         void RecursiveDeletion(int idx);
         OpenedFile *OpenFile(int idx, bool want_read, bool want_write);
@@ -58,15 +72,10 @@ private:
         int SearchInode(const char *path, bool create_perm);
         int SearchFileInDir(int dir_idx, const char *name);
         int CreateFileInDir(int dir_idx, const char *name, bool is_dir);
-        DirRecordList *ReadDirectory(Inode *dir) const;
+        DirRecordList *ReadDirectory(Inode *dir);
         void FreeDirRecordList(DirRecordList *ptr) const;
         void CreateDirRecord(int dir_idx, const char *filename, int idx);
         void DeleteDirRecord(int dir_idx, const char *filename);
-        BlockAddr GetBlockNum(Inode *in, uint32_t num) const;
-        BlockAddr AddBlock(Inode *in);
-        void AddBlockToLev1(Inode *in, BlockAddr new_block);
-        void AddBlockToLev2(Inode *in, BlockAddr new_block);
-        void FreeBlocks(Inode *in);
         void CreateRootDirectory();
         static void CreateFileSystem(int dir_fd);
         static const char *PathParsing(const char *path, char *filename);
@@ -75,13 +84,12 @@ private:
         static void GetDirectory(const char *path, char *dir, char *file);
         static char *Strdup(const char *str);
 public:
+        static const int max_name_len = 52;
         static const int max_file_amount = 100000; 
         static const uint32_t storage_amount = 4;
         static const uint32_t storage_size = 16384;
         static const off_t block_size = 4096;
-        static const off_t addr_in_block = block_size / sizeof(BlockAddr);
         static const off_t dirr_in_block = block_size / sizeof(DirRecord); 
-        friend class File;
 };
 
 #endif /* IVFS_HPP_SENTRY */

@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <pthread.h>
 
+struct Inode;
+
 struct BlockAddr {
         uint32_t storage_num;
         uint32_t block_num;
@@ -18,9 +20,15 @@ class BlockManager {
         uint32_t *free_blocks;
         pthread_mutex_t mtx;
 public:
+        static const off_t addr_in_block;
         BlockManager();
         ~BlockManager();
         bool Init(int dir_fd);
+        BlockAddr GetBlockNum(Inode *in, off_t num);
+        BlockAddr AddBlock(Inode *in);
+        void AddBlockToLev1(Inode *in, BlockAddr new_block);
+        void AddBlockToLev2(Inode *in, BlockAddr new_block);
+        void FreeBlocks(Inode *in);
         BlockAddr AllocateBlock();
         void FreeBlock(BlockAddr addr);
         void *ReadBlock(BlockAddr addr) const;

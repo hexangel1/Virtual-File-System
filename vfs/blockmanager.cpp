@@ -5,8 +5,11 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include "blockmanager.hpp"
+#include "inodemanager.hpp"
 #include "ivfs.hpp"
 
+const off_t BlockManager::addr_in_block = IVFS::block_size / sizeof(BlockAddr);
+ 
 BlockManager::BlockManager() : bitarray(0), size(0), fd(-1)
 {
         mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -61,6 +64,82 @@ bool BlockManager::Init(int dir_fd)
                 }
         }
         return true;
+}
+
+BlockAddr BlockManager::GetBlockNum(Inode *in, off_t num)
+{
+        BlockAddr retval;
+        if (num < 8) {
+                retval = in->block[num];
+        } else if (num >= 8 && num < 8 + addr_in_block) {
+                BlockAddr *lev1 = (BlockAddr*)ReadBlock(in->block[8]);
+                retval = lev1[num - 8];
+                UnmapBlock(lev1);
+        } else {
+                off_t idx1 = (num - 8 - addr_in_block) / addr_in_block;
+                off_t idx0 = (num - 8 - addr_in_block) % addr_in_block;
+                BlockAddr *lev2 = (BlockAddr*)ReadBlock(in->block[9]);
+                BlockAddr *lev1 = (BlockAddr*)ReadBlock(lev2[idx1]);
+                retval = lev1[idx0];
+                UnmapBlock(lev1);
+                UnmapBlock(lev2);
+        }
+        return retval;
+}
+
+BlockAddr BlockManager::AddBlock(Inode *in)
+{
+        BlockAddr new_block = AllocateBlock();
+        if (in->blk_size < 8)
+                in->block[in->blk_size] = new_block;
+        else if (in->blk_size >= 8 && in->blk_size < 8 + addr_in_block)
+                AddBlockToLev1(in, new_block);
+        else if (in->blk_size >= 8 + addr_in_block)
+                AddBlockToLev2(in, new_block);
+        in->blk_size++;
+        return new_block;
+}
+
+void BlockManager::AddBlockToLev1(Inode *in, BlockAddr new_block)
+{
+        if (in->blk_size == 8)
+                in->block[8] = AllocateBlock();
+        BlockAddr *block_lev1 = (BlockAddr*)ReadBlock(in->block[8]);
+        block_lev1[in->blk_size - 8] = new_block;
+        UnmapBlock(block_lev1);
+}
+
+void BlockManager::AddBlockToLev2(Inode *in, BlockAddr new_block)
+{
+        off_t lev1_num = (in->blk_size - 8 - addr_in_block) / addr_in_block;
+        off_t lev0_num = (in->blk_size - 8 - addr_in_block) % addr_in_block;
+        if (in->blk_size == 8 + addr_in_block)
+                in->block[9] = AllocateBlock();
+        BlockAddr *block_lev2 = (BlockAddr*)ReadBlock(in->block[9]);
+        if (lev0_num == 0)
+                block_lev2[lev1_num] = AllocateBlock();
+        BlockAddr *block_lev1 = (BlockAddr*)ReadBlock(block_lev2[lev1_num]);
+        block_lev1[lev0_num] = new_block;
+        UnmapBlock(block_lev1);
+        UnmapBlock(block_lev2);
+}
+
+void BlockManager::FreeBlocks(Inode *in)
+{
+        for (off_t i = 0; i < in->blk_size; i++)
+                FreeBlock(GetBlockNum(in, i));
+        if (in->blk_size > 8)
+                FreeBlock(in->block[8]);
+        if (in->blk_size > 8 + addr_in_block) {
+                BlockAddr *block_lev2 = (BlockAddr*)ReadBlock(in->block[9]);
+                off_t r = (in->blk_size - 8 - addr_in_block) / addr_in_block;
+                for (off_t i = 0; i < r + 1; i++)
+                        FreeBlock(block_lev2[i]);
+                UnmapBlock(block_lev2);
+                FreeBlock(in->block[9]);
+        }
+        in->byte_size = 0;
+        in->blk_size = 0;
 }
 
 BlockAddr BlockManager::AllocateBlock()

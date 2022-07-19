@@ -3,6 +3,7 @@
 *.bin
 *.mk
 *.tar
+*.swp
 tags
 prog
 work_dir
