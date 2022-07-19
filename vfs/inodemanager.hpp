@@ -15,6 +15,7 @@ struct Inode {
 };
 
 class InodeManager {
+        static const int max_file_amount = 100000;
         static const int inodes_cache_size = 16;
         uint32_t inodes_cache[inodes_cache_size];
         int inodes_used;

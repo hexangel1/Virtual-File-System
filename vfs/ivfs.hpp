@@ -11,12 +11,11 @@ struct DirRecordList {
 };
 
 struct OpenedFile {
-        int inode_idx; 
+        int inode_idx;
         int opened;
         bool perm_read;
         bool perm_write;
         struct Inode in;
-        class IVFS *vfs;
 };
 
 struct File {
@@ -29,6 +28,7 @@ private:
 };
 
 class IVFS {
+        static const int max_name_len = 52;
         struct FileOpenFlags {
                 bool r_flag;
                 bool w_flag;
@@ -37,34 +37,34 @@ class IVFS {
                 bool t_flag;
         };
         struct DirRecord {
-                char name[53];
-                char idx[11];
+                char name[max_name_len + 1];
+                char idx[63 - max_name_len];
         };
         struct OpenedFileItem {
                 OpenedFile *file;
                 OpenedFileItem *next;
         };
+        int dir_fd;
+        OpenedFileItem *first;
         InodeManager im;
         BlockManager bm;
-        OpenedFileItem *first;
-        int dir_fd;
         pthread_mutex_t mtx;
 public:
         IVFS();
         ~IVFS();
-        bool Mount(const char *path, bool makefs = false);
-        void Umount();
+        bool Boot(const char *path, bool makefs = false);
         bool Create(const char *path);
         bool Remove(const char *path, bool recursive = false);
+        bool Rename(const char *oldpath, const char *newpath);
         File *Open(const char *path, const char *flags);
         void Close(File *fp);
         ssize_t Read(File *fp, char *buf, size_t len);
         ssize_t Write(File *fp, const char *buf, size_t len);
         off_t Lseek(File *fp, off_t offset, int whence);
+        off_t Size(File *fp) const { return fp->master->in.byte_size; }
 private:
         void RecursiveDeletion(int idx);
         OpenedFile *OpenFile(int idx, bool want_read, bool want_write);
-        void CloseFile(OpenedFile *ofptr);
         bool IsDirectory(int idx);
         OpenedFile *AddOpenedFile(int idx, bool want_read, bool want_write);
         void DeleteOpenedFile(OpenedFile *ofptr);
@@ -72,24 +72,17 @@ private:
         int SearchInode(const char *path, bool create_perm);
         int SearchFileInDir(int dir_idx, const char *name);
         int CreateFileInDir(int dir_idx, const char *name, bool is_dir);
-        DirRecordList *ReadDirectory(Inode *dir);
-        void FreeDirRecordList(DirRecordList *ptr) const;
         void CreateDirRecord(int dir_idx, const char *filename, int idx);
         void DeleteDirRecord(int dir_idx, const char *filename);
+        DirRecordList *ReadDirectory(Inode *dir);
         void CreateRootDirectory();
+        static void FreeDirRecordList(DirRecordList *ptr);
         static void CreateFileSystem(int dir_fd);
         static const char *PathParsing(const char *path, char *filename);
         static bool CheckPath(const char *path);
         static bool ParseOpenFlags(const char *flags, FileOpenFlags &opf);
         static void GetDirectory(const char *path, char *dir, char *file);
         static char *Strdup(const char *str);
-public:
-        static const int max_name_len = 52;
-        static const int max_file_amount = 100000; 
-        static const uint32_t storage_amount = 4;
-        static const uint32_t storage_size = 16384;
-        static const off_t block_size = 4096;
-        static const off_t dirr_in_block = block_size / sizeof(DirRecord); 
 };
 
 #endif /* IVFS_HPP_SENTRY */

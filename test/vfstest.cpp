@@ -55,7 +55,7 @@ int main(void)
         int res, rc;
         File *f1, *f2, *f3;
         IVFS vfs;
-        vfs.Mount("./work_dir/", true);
+        vfs.Boot("./work_dir/", true);
         std::cerr << "SIMPLE OPEN/CLOSE TESTS" << std::endl;
 
         f1 = vfs.Open("/home/file.txt", "wc");
@@ -106,7 +106,7 @@ int main(void)
                 std::cerr << "BUG #6 !!!" << std::endl;
 
         std::cerr << "NOW RUNNING READ/WRITE FILE SYSTEM TESTS" << std::endl;
-        
+
         write_file_to_vfs(vfs, "/usr/local/games/test1", "test/test1");
         f1 = vfs.Open("/usr/local/games/test1", "r");
         f2 = vfs.Open("/usr/local/games/tmp", "wc");

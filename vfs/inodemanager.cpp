@@ -98,7 +98,7 @@ bool InodeManager::CreateInodeSpace(int dir)
                 perror("InodeManager::CreateInodeSpace(): open");
                 return false;
         }
-        int res = ftruncate(fd, IVFS::max_file_amount * sizeof(struct Inode));
+        int res = ftruncate(fd, max_file_amount * sizeof(struct Inode));
         if (res == -1) {
                 perror("InodeManager::CreateInodeSpace(): ftruncate");
                 return false;
@@ -109,7 +109,7 @@ bool InodeManager::CreateInodeSpace(int dir)
 
 void InodeManager::SearchFreeInodes()
 {
-        for (uint32_t idx = 1; idx < IVFS::max_file_amount; idx++) {
+        for (uint32_t idx = 1; idx < max_file_amount; idx++) {
                 Inode in;
                 ReadInode(&in, idx);
                 if (in.is_busy)
