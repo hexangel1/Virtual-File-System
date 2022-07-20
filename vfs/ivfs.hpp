@@ -53,7 +53,7 @@ public:
         IVFS();
         ~IVFS();
         bool Boot(const char *path, bool makefs = false);
-        bool Create(const char *path, bool is_dir = false);
+        bool Create(const char *path, bool directory = false);
         bool Remove(const char *path, bool recursive = false);
         bool Rename(const char *oldpath, const char *newpath);
         File *Open(const char *path, const char *flags);
@@ -65,10 +65,9 @@ public:
 private:
         void RecursiveDeletion(int idx);
         OpenedFile *OpenFile(int idx, bool want_read, bool want_write);
-        bool IsDirectory(int idx);
         OpenedFile *AddOpenedFile(int idx, bool want_read, bool want_write);
-        void DeleteOpenedFile(OpenedFile *ofptr);
         OpenedFile *SearchOpenedFile(int idx) const;
+        void DeleteOpenedFile(OpenedFile *ofptr);
         int SearchInode(const char *path, bool create_perm, bool mkdr = false);
         int SearchFileInDir(int dir_idx, const char *name);
         int CreateFileInDir(int dir_idx, const char *name, bool is_dir);
@@ -76,13 +75,13 @@ private:
         void DeleteDirRecord(int dir_idx, const char *filename);
         DirRecordList *ReadDirectory(Inode *dir);
         void CreateRootDirectory();
+        bool IsDirectory(int idx);
         static void FreeDirRecordList(DirRecordList *ptr);
         static void CreateFileSystem(int dir_fd);
-        static const char *PathParsing(const char *path, char *filename);
+        static const char *PathParsing(const char *path, char *file);
+        static void GetDirectory(const char *path, char *dir, char *file);
         static bool CheckPath(const char *path);
         static bool ParseOpenFlags(const char *flags, FileOpenFlags &opf);
-        static void GetDirectory(const char *path, char *dir, char *file);
-        static char *Strdup(const char *str);
 };
 
 #endif /* IVFS_HPP_SENTRY */

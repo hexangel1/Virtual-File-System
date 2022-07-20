@@ -295,13 +295,6 @@ void IVFS::RecursiveDeletion(int idx)
         im.FreeInode(idx);
 }
 
-bool IVFS::IsDirectory(int idx)
-{
-        Inode in;
-        im.ReadInode(&in, idx);
-        return in.is_dir;
-}
-
 OpenedFile *IVFS::OpenFile(int idx, bool want_read, bool want_write)
 {
         OpenedFile *ofptr = SearchOpenedFile(idx);
@@ -331,6 +324,16 @@ OpenedFile *IVFS::AddOpenedFile(int idx, bool want_read, bool want_write)
         return tmp->file;
 }
 
+OpenedFile *IVFS::SearchOpenedFile(int idx) const
+{
+        OpenedFileItem *tmp;
+        for (tmp = first; tmp; tmp = tmp->next) {
+                if (tmp->file->inode_idx == idx)
+                        return tmp->file;
+        }
+        return 0;
+}
+
 void IVFS::DeleteOpenedFile(OpenedFile *ofptr)
 {
         OpenedFileItem **ptr = &first;
@@ -344,16 +347,6 @@ void IVFS::DeleteOpenedFile(OpenedFile *ofptr)
                         ptr = &(*ptr)->next;
                 }
         }
-}
-
-OpenedFile *IVFS::SearchOpenedFile(int idx) const
-{
-        OpenedFileItem *tmp;
-        for (tmp = first; tmp; tmp = tmp->next) {
-                if (tmp->file->inode_idx == idx)
-                        return tmp->file;
-        }
-        return 0;
 }
 
 int IVFS::SearchInode(const char *path, bool create_perm, bool mkdr)
@@ -481,7 +474,9 @@ DirRecordList *IVFS::ReadDirectory(Inode *dir)
                         if (!arr[j].name[0])
                                 continue;
                         DirRecordList *tmp = new DirRecordList;
-                        tmp->filename = Strdup(arr[j].name);
+                        char *copy = new char[strlen(arr[j].name) + 1];
+                        strcpy(copy, arr[j].name);
+                        tmp->filename = copy;
                         tmp->inode_idx = atoi(arr[j].idx);
                         tmp->next = retval;
                         retval = tmp;
@@ -504,6 +499,13 @@ void IVFS::CreateRootDirectory()
         fputs("Created root directory '/' [0]\n", stderr);
 }
 
+bool IVFS::IsDirectory(int idx)
+{
+        Inode in;
+        im.ReadInode(&in, idx);
+        return in.is_dir;
+}
+
 void IVFS::FreeDirRecordList(DirRecordList *ptr)
 {
         while (ptr) {
@@ -521,14 +523,29 @@ void IVFS::CreateFileSystem(int dir_fd)
         BlockManager::CreateFreeBlockArray(dir_fd);
 }
 
-const char *IVFS::PathParsing(const char *path, char *filename)
+const char *IVFS::PathParsing(const char *path, char *file)
 {
         if (*path == '/')
                 path++;
-        for (; *path && *path != '/'; path++, filename++)
-                *filename = *path;
-        *filename = 0;
+        for (; *path && *path != '/'; path++, file++)
+                *file = *path;
+        *file = 0;
         return path;
+}
+
+void IVFS::GetDirectory(const char *path, char *dir, char *file)
+{
+        const char *tmp;
+        for (tmp = path; *tmp; tmp++)
+                ;
+        for (; tmp != path && *tmp != '/'; tmp--)
+                ;
+        for (; path != tmp; path++, dir++)
+                *dir = *path;
+        *dir = 0;
+        for (path++; *path; path++, file++)
+                *file = *path;
+        *file = 0;
 }
 
 bool IVFS::CheckPath(const char *path)
@@ -575,27 +592,5 @@ bool IVFS::ParseOpenFlags(const char *flag, FileOpenFlags &opf)
                 }
         }
         return true;
-}
-
-char *IVFS::Strdup(const char *str)
-{
-        char *copy = new char[strlen(str) + 1];
-        strcpy(copy, str);
-        return copy;
-}
-
-void IVFS::GetDirectory(const char *path, char *dir, char *file)
-{
-        const char *tmp;
-        for (tmp = path; *tmp; tmp++)
-                ;
-        for (; tmp != path && *tmp != '/'; tmp--)
-                ;
-        for (; path != tmp; path++, dir++)
-                *dir = *path;
-        *dir = 0;
-        for (path++; *path; path++, file++)
-                *file = *path;
-        *file = 0;
 }
 
