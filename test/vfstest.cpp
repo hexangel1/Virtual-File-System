@@ -137,38 +137,46 @@ int main(void)
         write_file_to_vfs(vfs, "/usr/bin/a/b/c/d/test18", "test/test18");
         write_file_to_vfs(vfs, "/usr/bin/a/b/c/d/e/test19", "test/test19");
         write_file_to_vfs(vfs, "/usr/bin/a/b/c/d/e/f/test20", "test/test20");
-
-
-        read_file_from_vfs(vfs, "/usr/local/games/test1", "test/test1.out");
-        read_file_from_vfs(vfs, "/usr/local/games/test2", "test/test2.out");
-        read_file_from_vfs(vfs, "/usr/local/games/test3", "test/test3.out");
-        read_file_from_vfs(vfs, "/usr/local/games/new/test4", "test/test4.out");
-        read_file_from_vfs(vfs, "/usr/local/games/new/test5", "test/test5.out");
-        read_file_from_vfs(vfs, "/usr/local/test6", "test/test6.out");
-        read_file_from_vfs(vfs, "/test7", "test/test7.out");
-        read_file_from_vfs(vfs, "/test8", "test/test8.out");
-        read_file_from_vfs(vfs, "/usr/bin/test9", "test/test9.out");
+        
+        vfs.Rename("/usr", "/user");
+        vfs.Rename("/user/local/games", "/user/local/new_games");
+        vfs.Rename("/user/local/new_games", "/trash");
+        vfs.Rename("/test7", "/test7.txt");
+        vfs.Rename("/test8", "/test8.txt");
+        vfs.Rename("/user/bin/a/b", "/new/path");
+        read_file_from_vfs(vfs, "/trash/test1", "test/test1.out");
+        read_file_from_vfs(vfs, "/trash/test2", "test/test2.out");
+        read_file_from_vfs(vfs, "/trash/test3", "test/test3.out");
+        read_file_from_vfs(vfs, "/trash/new/test4", "test/test4.out");
+        read_file_from_vfs(vfs, "/trash/new/test5", "test/test5.out");
+        read_file_from_vfs(vfs, "/user/local/test6", "test/test6.out");
+        
+        read_file_from_vfs(vfs, "/test7.txt", "test/test7.out");
+        read_file_from_vfs(vfs, "/test8.txt", "test/test8.out");
+        read_file_from_vfs(vfs, "/user/bin/test9", "test/test9.out");
         read_file_from_vfs(vfs, "/etc/config/test10", "test/test10.out");
         read_file_from_vfs(vfs, "/etc/config/test11", "test/test11.out");
         read_file_from_vfs(vfs, "/home/home/Doc/My/test12", "test/test12.out");
         read_file_from_vfs(vfs, "/etc/config/test13", "test/test13.out");
         read_file_from_vfs(vfs, "/etc/config/conf/test14", "test/test14.out");
-        read_file_from_vfs(vfs, "/usr/bin/a/test15", "test/test15.out");
-        read_file_from_vfs(vfs, "/usr/bin/a/b/test16", "test/test16.out");
-        read_file_from_vfs(vfs, "/usr/bin/a/b/c/test17", "test/test17.out");
-        read_file_from_vfs(vfs, "/usr/bin/a/b/c/d/test18", "test/test18.out");
-        read_file_from_vfs(vfs, "/usr/bin/a/b/c/d/e/test19", "test/test19.out");
-        read_file_from_vfs(vfs, "/usr/bin/a/b/c/d/e/f/test20",
-                                "test/test20.out");
-        vfs.Rename("/usr", "/very/strange/rename");
-        vfs.Rename("/etc", "/ets");
-        vfs.Rename("/test7", "/test77");
-        vfs.Rename("/test8", "/very/strange/rename/test88");
+        read_file_from_vfs(vfs, "/user/bin/a/test15", "test/test15.out");
+        read_file_from_vfs(vfs, "/new/path/test16", "test/test16.out");
+        read_file_from_vfs(vfs, "/new/path/c/test17", "test/test17.out");
+        read_file_from_vfs(vfs, "/new/path/c/d/test18", "test/test18.out");
+        read_file_from_vfs(vfs, "/new/path/c/d/e/test19", "test/test19.out");
+        read_file_from_vfs(vfs, "/new/path/c/d/e/f/test20", "test/test20.out");
         
+        vfs.Rename("/user", "/very/strange/rename");
+        vfs.Rename("/etc", "/ets");
+        vfs.Rename("/test7.txt", "/test7");
+        vfs.Rename("/test8.txt", "/very/strange/rename.txt");
+        
+        vfs.Remove("/trash", true);
+        vfs.Remove("/new", true);
         vfs.Remove("/very", true);
         vfs.Remove("/ets", true);
         vfs.Remove("/home", true);
-        vfs.Remove("/test77");
+        vfs.Remove("/test7");
         return 0;
 }
 
