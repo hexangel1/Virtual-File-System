@@ -9,6 +9,7 @@
 * Размер хранилища в байтах по умолчанию составляет 16384 * 4 KB = 65536 KB = 64 MB
 * Для хранения файлов по умолчанию создается 4 физических файла-хранилища
 * Ограничение на количество создаваемых файлов по умолчанию задается равным 1000000
+* Ограничение на длину имени файла установлено в 52 символа
 
 ## Подключение библиотеки
 
@@ -20,19 +21,30 @@
 * Для использования библиотечных определений подключается заголовочный файл `"vfs/ivfs.hpp"`  
   `#include "vfs/ivfs.hpp"`
 
-## Использование библиотеки
+## Интерфейс файловой системы
 
-* `IVFS vfs` - класс файловая система
-* `File f` - класс файл
-* `vfs.Mount(path)` - прочитать файловую систему
-* `vfs.Umount()` - закрыть файловую систему
-* `vfs.Open(path, perms)` - открыть файл
-* `vfs.Delete(path)` - удалить файл
-* `f.Read(buf, len)` - чтение данных из файла
-* `f.Write(buf, len)` - запись данных в файл
-* `f.Lseek(offset, whence)` - переместить курсор в файле
-* `f.Close()` - закрыть файл
-* `f.Size()` - возвращает размер файла в байтах
+* `IVFS vfs` - класс файловая система  
+* `File *f` - указатель на файл  
+* `bool Boot(const char *path, bool makefs = false)`  
+        - загрузить файловую систему
+* `bool Create(const char *path, bool directory = false)`  
+        - создать файл
+* `bool Remove(const char *path, bool recursive = false)`  
+        - удалить файл
+* `bool Rename(const char *oldpath, const char *newpath)`  
+        - переименовать файл
+* `File *Open(const char *path, const char *flags)`  
+        - открыть файл
+* `void Close(File *fp)`  
+        - закрыть файл
+* `ssize_t Read(File *fp, char *buf, size_t len)`  
+        - прочитать данные из файла
+* `ssize_t Write(File *fp, const char *buf, size_t len)`  
+        - записать данные в файл
+* `off_t Lseek(File *fp, off_t offset, int whence)`  
+        - выполнить позиционирование в файле
+* `off_t Size(File *fp) const`  
+        - получить размер файла в байтах
 
 ## make команды
 

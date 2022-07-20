@@ -29,7 +29,7 @@ memcheck: $(PROJECT)
 vfstest: $(LIBDEPEND)
 	$(CXX) $(CXXFLAGS) -o $@ test/$@.cpp $(LDLIBS)
 #	cd test && ./build_tests.sh
-	./$@
+	valgrind ./$@
 	rm -f vfstest
 	cd test && ./run_tests.sh
 

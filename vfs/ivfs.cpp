@@ -1,7 +1,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <ctype.h>
+#include <cctype>
 #include <fcntl.h>
 #include <unistd.h>
 #include "ivfs.hpp"
@@ -159,8 +159,10 @@ File *IVFS::Open(const char *path, const char *flags)
         }
         OpenedFile *ofptr = OpenFile(idx, opf.r_flag, opf.w_flag);
         pthread_mutex_unlock(&mtx);
-        if (!ofptr)
+        if (!ofptr) {
+                fputs("Incompatible file open mode\n", stderr); 
                 return 0;
+        }
         if (opf.w_flag && opf.t_flag && ofptr->in.byte_size > 0) {
                 bm.FreeBlocks(&ofptr->in);
                 bm.AddBlock(&ofptr->in);
@@ -253,6 +255,7 @@ ssize_t IVFS::Write(File *fp, const char *buf, size_t len)
 off_t IVFS::Lseek(File *fp, off_t offset, int whence)
 {
         off_t new_pos, pos = fp->cur_block * bm.BlockSize() + fp->cur_pos;
+        off_t end_pos = fp->master->in.blk_size - 1;
         off_t old_block = fp->cur_block;
         switch (whence) {
         case 0:
@@ -262,13 +265,13 @@ off_t IVFS::Lseek(File *fp, off_t offset, int whence)
                 new_pos = pos + offset;
                 break;
         case 2:
-                new_pos = fp->master->in.byte_size - 1 + offset;
+                new_pos = end_pos + offset;
                 break;
         default:
                 new_pos = pos;
         }
-        if (new_pos > fp->master->in.byte_size - 1)
-                new_pos = fp->master->in.byte_size - 1;
+        if (new_pos > end_pos)
+                new_pos = end_pos;
         if (new_pos < 0)
                 new_pos = 0;
         fp->cur_block = new_pos / bm.BlockSize();
@@ -303,7 +306,6 @@ OpenedFile *IVFS::OpenFile(int idx, bool want_read, bool want_write)
                         ofptr->opened++;
                         return ofptr;
                 }
-                fputs("Incompatible file open mode\n", stderr);
                 return 0;
         }
         ofptr = AddOpenedFile(idx, want_read, want_write);
@@ -365,6 +367,7 @@ int IVFS::SearchInode(const char *path, bool create_perm, bool mkdr)
                                 return -1;
                         }
                         idx = CreateFileInDir(dir_idx, filename, *path || mkdr);
+                        fprintf(stderr, "Created: %s [%d]\n", filename, idx); 
                 }
                 dir_idx = idx;
         }
@@ -414,7 +417,6 @@ int IVFS::CreateFileInDir(int dir_idx, const char *name, bool is_dir)
                 memset(arr, 0, bm.BlockSize());
                 bm.UnmapBlock(arr);
         }
-        fprintf(stderr, "Created file: %s [%d]\n", name, idx);
         return idx;
 }
 
@@ -427,7 +429,6 @@ void IVFS::CreateDirRecord(int dir_idx, const char *filename, int inode_idx)
                 DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
                 for (size_t j = 0; j < bm.BlockSize() / sizeof(*arr); j++) {
                         if (!arr[j].name[0]) {
-                                memset(&arr[j], 0, sizeof(arr[j]));
                                 strcpy(arr[j].name, filename);
                                 sprintf(arr[j].idx, "%d", inode_idx);
                                 bm.UnmapBlock(arr);
@@ -474,9 +475,7 @@ DirRecordList *IVFS::ReadDirectory(Inode *dir)
                         if (!arr[j].name[0])
                                 continue;
                         DirRecordList *tmp = new DirRecordList;
-                        char *copy = new char[strlen(arr[j].name) + 1];
-                        strcpy(copy, arr[j].name);
-                        tmp->filename = copy;
+                        tmp->filename = strdup(arr[j].name);
                         tmp->inode_idx = atoi(arr[j].idx);
                         tmp->next = retval;
                         retval = tmp;
@@ -496,7 +495,6 @@ void IVFS::CreateRootDirectory()
         root.blk_size = 0;
         bm.AddBlock(&root);
         im.WriteInode(&root, 0);
-        fputs("Created root directory '/' [0]\n", stderr);
 }
 
 bool IVFS::IsDirectory(int idx)
@@ -511,7 +509,7 @@ void IVFS::FreeDirRecordList(DirRecordList *ptr)
         while (ptr) {
                 DirRecordList *tmp = ptr;
                 ptr = ptr->next;
-                delete []tmp->filename;
+                free((void*)tmp->filename);
                 delete tmp;
         }
 }
@@ -535,12 +533,8 @@ const char *IVFS::PathParsing(const char *path, char *file)
 
 void IVFS::GetDirectory(const char *path, char *dir, char *file)
 {
-        const char *tmp;
-        for (tmp = path; *tmp; tmp++)
-                ;
-        for (; tmp != path && *tmp != '/'; tmp--)
-                ;
-        for (; path != tmp; path++, dir++)
+        const char *s;
+        for (s = strrchr(path, '/'); path != s; path++, dir++)
                 *dir = *path;
         *dir = 0;
         for (path++; *path; path++, file++)
@@ -555,7 +549,7 @@ bool IVFS::CheckPath(const char *path)
         int len = 0;
         for (path++; *path; path++) {
                 if (*path == '/') {
-                        if (len == 0 || len >= max_name_len)
+                        if (len == 0 || len > max_name_len)
                                 return false;
                         len = 0;
                         continue;
@@ -564,7 +558,7 @@ bool IVFS::CheckPath(const char *path)
                         return false;
                 len++;
         }
-        return len > 0 && len < max_name_len;
+        return len > 0 && len <= max_name_len;
 }
 
 bool IVFS::ParseOpenFlags(const char *flag, FileOpenFlags &opf)
