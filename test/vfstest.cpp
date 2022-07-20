@@ -160,11 +160,15 @@ int main(void)
         read_file_from_vfs(vfs, "/usr/bin/a/b/c/d/e/test19", "test/test19.out");
         read_file_from_vfs(vfs, "/usr/bin/a/b/c/d/e/f/test20",
                                 "test/test20.out");
-        vfs.Remove("/usr", true);
-        vfs.Remove("/etc", true);
+        vfs.Rename("/usr", "/very/strange/rename");
+        vfs.Rename("/etc", "/ets");
+        vfs.Rename("/test7", "/test77");
+        vfs.Rename("/test8", "/very/strange/rename/test88");
+        
+        vfs.Remove("/very", true);
+        vfs.Remove("/ets", true);
         vfs.Remove("/home", true);
-        vfs.Remove("/test7");
-        vfs.Remove("/test8");
+        vfs.Remove("/test77");
         return 0;
 }
 

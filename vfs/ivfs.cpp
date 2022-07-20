@@ -51,6 +51,14 @@ bool IVFS::Boot(const char *path, bool makefs)
         return true;
 }
 
+bool IVFS::Create(const char *path, bool is_dir)
+{
+        pthread_mutex_lock(&mtx);
+        SearchInode(path, true, is_dir);
+        pthread_mutex_unlock(&mtx);
+        return true;
+} 
+
 bool IVFS::Remove(const char *path, bool recursive)
 {
         char dirname[max_name_len];
@@ -80,6 +88,50 @@ bool IVFS::Remove(const char *path, bool recursive)
         }
         RecursiveDeletion(idx);
         DeleteDirRecord(dir_idx, filename);
+        pthread_mutex_unlock(&mtx);
+        return true;
+}
+
+bool IVFS::Rename(const char *oldpath, const char *newpath)
+{
+        char old_dirname[max_name_len], old_filename[max_name_len];
+        char new_dirname[max_name_len], new_filename[max_name_len];
+        if (!CheckPath(oldpath)) {
+                fprintf(stderr, "Invalid path: %s\n", oldpath);
+                return false;
+        }
+        if (!CheckPath(newpath)) {
+                fprintf(stderr, "Invalid path: %s\n", newpath);
+                return false;
+        }
+        GetDirectory(oldpath, old_dirname, old_filename);
+        GetDirectory(newpath, new_dirname, new_filename);
+        pthread_mutex_lock(&mtx);
+        int old_dir_idx = SearchInode(old_dirname, false);
+        if (old_dir_idx == -1) {
+                fprintf(stderr, "Directory %s not found\n", old_dirname);
+                pthread_mutex_unlock(&mtx);
+                return false;
+        }
+        int idx = SearchFileInDir(old_dir_idx, old_filename);
+        if (idx == -1) {
+                fprintf(stderr, "File %s not found\n", old_filename);
+                pthread_mutex_unlock(&mtx);
+                return false;
+        }
+        int new_dir_idx = SearchInode(new_dirname, true, true);
+        if (!IsDirectory(new_dir_idx)) {
+                fprintf(stderr, "Path %s not directory\n", new_dirname);
+                pthread_mutex_unlock(&mtx);
+                return false;
+        }
+        if (SearchFileInDir(new_dir_idx, new_filename) != -1) {
+                fprintf(stderr, "Path %s already exists\n", newpath);
+                pthread_mutex_unlock(&mtx);
+                return false;
+        }
+        DeleteDirRecord(old_dir_idx, old_filename);
+        CreateDirRecord(new_dir_idx, new_filename, idx);
         pthread_mutex_unlock(&mtx);
         return true;
 }
@@ -304,11 +356,11 @@ OpenedFile *IVFS::SearchOpenedFile(int idx) const
         return 0;
 }
 
-int IVFS::SearchInode(const char *path, bool create_perm)
+int IVFS::SearchInode(const char *path, bool create_perm, bool mkdr)
 {
-        int dir_idx = 0, idx;
+        int dir_idx = 0, idx = 0;
         char filename[max_name_len];
-        while (path) {
+        while (*path) {
                 path = PathParsing(path, filename);
                 fprintf(stderr, "Searching for file <%s> ", filename);
                 fprintf(stderr, "in directory %d...\n", dir_idx);
@@ -319,7 +371,7 @@ int IVFS::SearchInode(const char *path, bool create_perm)
                                 fputs("Creation is not permitted\n", stderr);
                                 return -1;
                         }
-                        idx = CreateFileInDir(dir_idx, filename, path);
+                        idx = CreateFileInDir(dir_idx, filename, *path || mkdr);
                 }
                 dir_idx = idx;
         }
@@ -476,7 +528,7 @@ const char *IVFS::PathParsing(const char *path, char *filename)
         for (; *path && *path != '/'; path++, filename++)
                 *filename = *path;
         *filename = 0;
-        return *path == '/' ? path + 1 : 0;
+        return path;
 }
 
 bool IVFS::CheckPath(const char *path)

@@ -53,7 +53,7 @@ public:
         IVFS();
         ~IVFS();
         bool Boot(const char *path, bool makefs = false);
-        bool Create(const char *path);
+        bool Create(const char *path, bool is_dir = false);
         bool Remove(const char *path, bool recursive = false);
         bool Rename(const char *oldpath, const char *newpath);
         File *Open(const char *path, const char *flags);
@@ -69,7 +69,7 @@ private:
         OpenedFile *AddOpenedFile(int idx, bool want_read, bool want_write);
         void DeleteOpenedFile(OpenedFile *ofptr);
         OpenedFile *SearchOpenedFile(int idx) const;
-        int SearchInode(const char *path, bool create_perm);
+        int SearchInode(const char *path, bool create_perm, bool mkdr = false);
         int SearchFileInDir(int dir_idx, const char *name);
         int CreateFileInDir(int dir_idx, const char *name, bool is_dir);
         void CreateDirRecord(int dir_idx, const char *filename, int idx);
