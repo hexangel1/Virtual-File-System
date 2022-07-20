@@ -2,8 +2,8 @@
 #define INODEMANAGER_HPP_SENTRY
 
 #include <stdint.h>
-#include <sys/types.h>
 #include <pthread.h>
+#include <sys/types.h>
 #include "blockmanager.hpp"
 
 struct Inode {
@@ -15,11 +15,11 @@ struct Inode {
 };
 
 class InodeManager {
-        static const int max_file_amount = 100000;
+        static const int max_file_amount = 1000000;
         static const int inodes_cache_size = 16;
-        uint32_t inodes_cache[inodes_cache_size];
-        int inodes_used;
         int inodes_fd;
+        int cache_used;
+        int inodes_cache[inodes_cache_size];
         pthread_mutex_t gf_mtx;
         pthread_mutex_t rw_mtx;
 public:

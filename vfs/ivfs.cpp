@@ -69,7 +69,7 @@ bool IVFS::Remove(const char *path, bool recursive)
         }
         GetDirectory(path, dirname, filename);
         pthread_mutex_lock(&mtx);
-        int dir_idx = dirname[0] ? SearchInode(dirname, false) : 0;
+        int dir_idx = SearchInode(dirname, false);
         if (dir_idx == -1) {
                 fprintf(stderr, "Directory %s not found\n", dirname);
                 pthread_mutex_unlock(&mtx);
@@ -161,7 +161,7 @@ File *IVFS::Open(const char *path, const char *flags)
         pthread_mutex_unlock(&mtx);
         if (!ofptr)
                 return 0;
-        if (opf.t_flag && ofptr->in.byte_size > 0) {
+        if (opf.w_flag && opf.t_flag && ofptr->in.byte_size > 0) {
                 bm.FreeBlocks(&ofptr->in);
                 bm.AddBlock(&ofptr->in);
         }
@@ -195,11 +195,11 @@ ssize_t IVFS::Read(File *fp, char *buf, size_t len)
                 return -1;
         }
         size_t rc = 0;
-        size_t was_read = fp->cur_block * bm.block_size + fp->cur_pos;
+        size_t was_read = fp->cur_block * bm.BlockSize() + fp->cur_pos;
         if (len > fp->master->in.byte_size - was_read)
                 len = fp->master->in.byte_size - was_read;
         while (len > 0) {
-                size_t can_read = bm.block_size - fp->cur_pos;
+                size_t can_read = bm.BlockSize() - fp->cur_pos;
                 if (len < can_read) {
                         memcpy(buf + rc, fp->block + fp->cur_pos, len);
                         fp->cur_pos += len;
@@ -228,7 +228,7 @@ ssize_t IVFS::Write(File *fp, const char *buf, size_t len)
         }
         size_t wc = 0;
         while (len > 0) {
-                size_t can_write = bm.block_size - fp->cur_pos;
+                size_t can_write = bm.BlockSize() - fp->cur_pos;
                 if (len < can_write) {
                         memcpy(fp->block + fp->cur_pos, buf + wc, len);
                         fp->cur_pos += len;
@@ -252,7 +252,7 @@ ssize_t IVFS::Write(File *fp, const char *buf, size_t len)
 
 off_t IVFS::Lseek(File *fp, off_t offset, int whence)
 {
-        off_t new_pos, pos = fp->cur_block * bm.block_size + fp->cur_pos;
+        off_t new_pos, pos = fp->cur_block * bm.BlockSize() + fp->cur_pos;
         off_t old_block = fp->cur_block;
         switch (whence) {
         case 0:
@@ -271,8 +271,8 @@ off_t IVFS::Lseek(File *fp, off_t offset, int whence)
                 new_pos = fp->master->in.byte_size - 1;
         if (new_pos < 0)
                 new_pos = 0;
-        fp->cur_block = new_pos / bm.block_size;
-        fp->cur_pos = new_pos % bm.block_size;
+        fp->cur_block = new_pos / bm.BlockSize();
+        fp->cur_pos = new_pos % bm.BlockSize();
         if (fp->cur_block != old_block) {
                 bm.UnmapBlock(fp->block);
                 BlockAddr addr = bm.GetBlock(&fp->master->in, fp->cur_block);
@@ -411,7 +411,7 @@ int IVFS::CreateFileInDir(int dir_idx, const char *name, bool is_dir)
         CreateDirRecord(dir_idx, name, idx);
         if (is_dir) {
                 DirRecord *arr = (DirRecord*)bm.ReadBlock(in.block[0]);
-                memset(arr, 0, bm.block_size);
+                memset(arr, 0, bm.BlockSize());
                 bm.UnmapBlock(arr);
         }
         fprintf(stderr, "Created file: %s [%d]\n", name, idx);
@@ -425,7 +425,7 @@ void IVFS::CreateDirRecord(int dir_idx, const char *filename, int inode_idx)
         for (off_t i = 0; i < dir.blk_size; i++) {
                 BlockAddr addr = bm.GetBlock(&dir, i);
                 DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
-                for (size_t j = 0; j < bm.block_size / sizeof(*arr); j++) {
+                for (size_t j = 0; j < bm.BlockSize() / sizeof(*arr); j++) {
                         if (!arr[j].name[0]) {
                                 memset(&arr[j], 0, sizeof(arr[j]));
                                 strcpy(arr[j].name, filename);
@@ -438,7 +438,7 @@ void IVFS::CreateDirRecord(int dir_idx, const char *filename, int inode_idx)
         }
         BlockAddr addr = bm.AddBlock(&dir);
         DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
-        memset(arr, 0, bm.block_size);
+        memset(arr, 0, bm.BlockSize());
         strcpy(arr[0].name, filename);
         sprintf(arr[0].idx, "%d", inode_idx);
         bm.UnmapBlock(arr);
@@ -452,7 +452,7 @@ void IVFS::DeleteDirRecord(int dir_idx, const char *filename)
         for (off_t i = 0; i < dir.blk_size; i++) {
                 BlockAddr addr = bm.GetBlock(&dir, i);
                 DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
-                for (size_t j = 0; j < bm.block_size / sizeof(*arr); j++) {
+                for (size_t j = 0; j < bm.BlockSize() / sizeof(*arr); j++) {
                         if (!strcmp(arr[j].name, filename)) {
                                 memset(&arr[j], 0, sizeof(arr[j]));
                                 bm.UnmapBlock(arr);
@@ -470,7 +470,7 @@ DirRecordList *IVFS::ReadDirectory(Inode *dir)
         for (off_t i = 0; i < dir->blk_size; i++) {
                 BlockAddr addr = bm.GetBlock(dir, i);
                 DirRecord *arr = (DirRecord*)bm.ReadBlock(addr);
-                for (size_t j = 0; j < bm.block_size / sizeof(*arr); j++) {
+                for (size_t j = 0; j < bm.BlockSize() / sizeof(*arr); j++) {
                         if (!arr[j].name[0])
                                 continue;
                         DirRecordList *tmp = new DirRecordList;

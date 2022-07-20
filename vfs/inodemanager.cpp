@@ -11,7 +11,7 @@ InodeManager::InodeManager()
         rw_mtx = PTHREAD_MUTEX_INITIALIZER;
         for (int i = 0; i < inodes_cache_size; i++)
                 inodes_cache[i] = 0;
-        inodes_used = inodes_cache_size;
+        cache_used = inodes_cache_size;
         inodes_fd = -1;
 }
 
@@ -39,11 +39,11 @@ uint32_t InodeManager::GetInode()
         memset(&in, 0, sizeof(in));
         in.is_busy = true;
         pthread_mutex_lock(&gf_mtx);
-        if (inodes_used == inodes_cache_size)
+        if (cache_used == inodes_cache_size)
                 SearchFreeInodes();
-        if (inodes_used < inodes_cache_size) {
-                retval = inodes_cache[inodes_used];
-                inodes_used++;
+        if (cache_used < inodes_cache_size) {
+                retval = inodes_cache[cache_used];
+                cache_used++;
         }
         WriteInode(&in, retval);
         pthread_mutex_unlock(&gf_mtx);
@@ -56,9 +56,9 @@ void InodeManager::FreeInode(uint32_t idx)
         memset(&in, 0, sizeof(in));
         WriteInode(&in, idx);
         pthread_mutex_lock(&gf_mtx);
-        if (inodes_used > 0) {
-                inodes_used--;
-                inodes_cache[inodes_used] = idx;
+        if (cache_used > 0) {
+                cache_used--;
+                inodes_cache[cache_used] = idx;
         }
         pthread_mutex_unlock(&gf_mtx);
 }
@@ -114,9 +114,9 @@ void InodeManager::SearchFreeInodes()
                 ReadInode(&in, idx);
                 if (in.is_busy)
                         continue;
-                inodes_used--;
-                inodes_cache[inodes_used] = idx;
-                if (inodes_used == 0)
+                cache_used--;
+                inodes_cache[cache_used] = idx;
+                if (cache_used == 0)
                         break;
         }
 }
