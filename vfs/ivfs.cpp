@@ -183,7 +183,11 @@ void IVFS::Close(File *fp)
         pthread_mutex_lock(&mtx);
         fp->master->opened--;
         if (fp->master->opened == 0) {
-                im.WriteInode(&fp->master->in, fp->master->inode_idx);
+                if (fp->master->defer_delete) {
+                        bm.FreeBlocks(&fp->master->in);
+                } else {
+                        im.WriteInode(&fp->master->in, fp->master->inode_idx);
+                }
                 DeleteOpenedFile(fp->master);
         }
         pthread_mutex_unlock(&mtx);
@@ -294,7 +298,12 @@ void IVFS::RecursiveDeletion(int idx)
                         RecursiveDeletion(tmp->inode_idx);
                 FreeDirRecordList(ls);
         }
-        bm.FreeBlocks(&in);
+        OpenedFile *ofptr = SearchOpenedFile(idx);
+        if (ofptr) {
+                ofptr->defer_delete = true;
+        } else {
+                bm.FreeBlocks(&in);
+        }
         im.FreeInode(idx);
 }
 
@@ -319,6 +328,7 @@ OpenedFile *IVFS::AddOpenedFile(int idx, bool want_read, bool want_write)
         tmp->file->opened = 1;
         tmp->file->perm_read = want_read;
         tmp->file->perm_write = want_write;
+        tmp->file->defer_delete = false;
         tmp->file->inode_idx = idx;
         im.ReadInode(&tmp->file->in, idx);
         tmp->next = first;

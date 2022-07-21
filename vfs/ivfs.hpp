@@ -15,6 +15,7 @@ struct OpenedFile {
         int opened;
         bool perm_read;
         bool perm_write;
+        bool defer_delete;
         struct Inode in;
 };
 
