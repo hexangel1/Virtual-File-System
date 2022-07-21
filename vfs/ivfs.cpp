@@ -8,11 +8,12 @@
 
 IVFS::IVFS() : dir_fd(-1), first(0)
 {
-        mtx = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_init(&mtx, 0);
 }
 
 IVFS::~IVFS()
 {
+        pthread_mutex_destroy(&mtx);
         if (dir_fd != -1)
                 close(dir_fd);
         OpenedFileItem *tmp;

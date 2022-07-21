@@ -7,16 +7,18 @@
 
 InodeManager::InodeManager()
 {
-        gf_mtx = PTHREAD_MUTEX_INITIALIZER;
-        rw_mtx = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_init(&gf_mtx, 0);
+        pthread_mutex_init(&rw_mtx, 0);
         for (int i = 0; i < inodes_cache_size; i++)
-                inodes_cache[i] = 0;
+                inodes_cache[i] = -1;
         cache_used = inodes_cache_size;
         inodes_fd = -1;
 }
 
 InodeManager::~InodeManager()
 {
+        pthread_mutex_destroy(&gf_mtx);
+        pthread_mutex_destroy(&rw_mtx);
         if (inodes_fd != -1)
                 close(inodes_fd);
 }
@@ -54,8 +56,8 @@ void InodeManager::FreeInode(uint32_t idx)
 {
         Inode in;
         memset(&in, 0, sizeof(in));
-        WriteInode(&in, idx);
         pthread_mutex_lock(&gf_mtx);
+        WriteInode(&in, idx);
         if (cache_used > 0) {
                 cache_used--;
                 inodes_cache[cache_used] = idx;

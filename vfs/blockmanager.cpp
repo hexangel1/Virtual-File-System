@@ -10,7 +10,7 @@
 
 BlockManager::BlockManager() : bitarray(0), size(0), fd(-1)
 {
-        mtx = PTHREAD_MUTEX_INITIALIZER;
+        pthread_mutex_init(&mtx, 0);
         for (uint32_t i = 0; i < storage_amount; i++) {
                 storage_fds[i] = -1;
                 free_blocks[i] = 0;
@@ -19,6 +19,7 @@ BlockManager::BlockManager() : bitarray(0), size(0), fd(-1)
 
 BlockManager::~BlockManager()
 {
+        pthread_mutex_destroy(&mtx);
         if (bitarray) {
                 msync(bitarray, size, MS_SYNC);
                 munmap(bitarray, size);
