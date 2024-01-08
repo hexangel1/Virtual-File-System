@@ -8,8 +8,9 @@
 #include "inodemanager.hpp"
 #include "ivfs.hpp"
 
-BlockManager::BlockManager() : bitarray(0), size(0), fd(-1)
+BlockManager::BlockManager() : bitmap(0), size(0), fd(-1)
 {
+        printf("size = %ld\n", sizeof(BlockAddress));
         pthread_mutex_init(&mtx, 0);
         for (uint32_t i = 0; i < storage_amount; i++) {
                 storage_fds[i] = -1;
@@ -20,9 +21,9 @@ BlockManager::BlockManager() : bitarray(0), size(0), fd(-1)
 BlockManager::~BlockManager()
 {
         pthread_mutex_destroy(&mtx);
-        if (bitarray) {
-                msync(bitarray, size, MS_SYNC);
-                munmap(bitarray, size);
+        if (bitmap) {
+                msync(bitmap, size, MS_SYNC);
+                munmap(bitmap, size);
         }
         if (fd != -1)
                 close(fd);
@@ -46,7 +47,7 @@ bool BlockManager::Init(int dir_fd)
                 perror("BlockManager::Init(): mmap");
                 return false;
         }
-        bitarray = (char*)p;
+        bitmap = (char*)p;
         char storage_name[32];
         for (uint32_t i = 0; i < storage_amount; i++) {
                 sprintf(storage_name, "storage%d", i);
@@ -60,20 +61,20 @@ bool BlockManager::Init(int dir_fd)
         return true;
 }
 
-BlockAddr BlockManager::GetBlock(Inode *in, off_t num)
+BlockAddress BlockManager::GetBlock(Inode *in, off_t num)
 {
-        BlockAddr retval;
+        BlockAddress retval;
         if (num < 8) {
                 retval = in->block[num];
         } else if (num >= 8 && num < 8 + addr_in_block) {
-                BlockAddr *lev1 = (BlockAddr*)ReadBlock(in->block[8]);
+                BlockAddress *lev1 = (BlockAddress*)ReadBlock(in->block[8]);
                 retval = lev1[num - 8];
                 UnmapBlock(lev1);
         } else {
                 off_t idx1 = (num - 8 - addr_in_block) / addr_in_block;
                 off_t idx0 = (num - 8 - addr_in_block) % addr_in_block;
-                BlockAddr *lev2 = (BlockAddr*)ReadBlock(in->block[9]);
-                BlockAddr *lev1 = (BlockAddr*)ReadBlock(lev2[idx1]);
+                BlockAddress *lev2 = (BlockAddress*)ReadBlock(in->block[9]);
+                BlockAddress *lev1 = (BlockAddress*)ReadBlock(lev2[idx1]);
                 retval = lev1[idx0];
                 UnmapBlock(lev1);
                 UnmapBlock(lev2);
@@ -81,9 +82,9 @@ BlockAddr BlockManager::GetBlock(Inode *in, off_t num)
         return retval;
 }
 
-BlockAddr BlockManager::AddBlock(Inode *in)
+BlockAddress BlockManager::AddBlock(Inode *in)
 {
-        BlockAddr new_block = AllocateBlock();
+        BlockAddress new_block = AllocateBlock();
         if (in->blk_size < 8)
                 in->block[in->blk_size] = new_block;
         else if (in->blk_size >= 8 && in->blk_size < 8 + addr_in_block)
@@ -101,7 +102,7 @@ void BlockManager::FreeBlocks(Inode *in)
         if (in->blk_size > 8)
                 FreeBlock(in->block[8]);
         if (in->blk_size > 8 + addr_in_block) {
-                BlockAddr *block_lev2 = (BlockAddr*)ReadBlock(in->block[9]);
+                BlockAddress *block_lev2 = (BlockAddress*)ReadBlock(in->block[9]);
                 off_t r = (in->blk_size - 8 - addr_in_block) / addr_in_block;
                 for (off_t i = 0; i < r + 1; i++)
                         FreeBlock(block_lev2[i]);
@@ -112,7 +113,7 @@ void BlockManager::FreeBlocks(Inode *in)
         in->blk_size = 0;
 }
 
-void *BlockManager::ReadBlock(BlockAddr addr) const
+void *BlockManager::ReadBlock(BlockAddress addr) const
 {
         void *ptr = mmap(0, block_size, PROT_READ | PROT_WRITE,
                          MAP_SHARED, storage_fds[addr.storage_num],
@@ -130,9 +131,9 @@ void BlockManager::UnmapBlock(void *ptr) const
         munmap(ptr, block_size);
 }
 
-BlockAddr BlockManager::AllocateBlock()
+BlockAddress BlockManager::AllocateBlock()
 {
-        BlockAddr addr;
+        BlockAddress addr;
         pthread_mutex_lock(&mtx);
         uint32_t idx = MostFreeStorage();
         addr.storage_num = idx;
@@ -142,34 +143,34 @@ BlockAddr BlockManager::AllocateBlock()
         return addr;
 }
 
-void BlockManager::FreeBlock(BlockAddr addr)
+void BlockManager::FreeBlock(BlockAddress addr)
 {
         size_t idx = addr.storage_num * storage_size + addr.block_num;
         pthread_mutex_lock(&mtx);
-        bitarray[idx / 8] |= 0x1 << idx % 8;
+        bitmap[idx / 8] |= 0x1 << idx % 8;
         free_blocks[addr.storage_num]++;
         pthread_mutex_unlock(&mtx);
 }
 
-void BlockManager::AddBlockToLev1(Inode *in, BlockAddr new_block)
+void BlockManager::AddBlockToLev1(Inode *in, BlockAddress new_block)
 {
         if (in->blk_size == 8)
                 in->block[8] = AllocateBlock();
-        BlockAddr *block_lev1 = (BlockAddr*)ReadBlock(in->block[8]);
+        BlockAddress *block_lev1 = (BlockAddress*)ReadBlock(in->block[8]);
         block_lev1[in->blk_size - 8] = new_block;
         UnmapBlock(block_lev1);
 }
 
-void BlockManager::AddBlockToLev2(Inode *in, BlockAddr new_block)
+void BlockManager::AddBlockToLev2(Inode *in, BlockAddress new_block)
 {
         off_t lev1_num = (in->blk_size - 8 - addr_in_block) / addr_in_block;
         off_t lev0_num = (in->blk_size - 8 - addr_in_block) % addr_in_block;
         if (in->blk_size == 8 + addr_in_block)
                 in->block[9] = AllocateBlock();
-        BlockAddr *block_lev2 = (BlockAddr*)ReadBlock(in->block[9]);
+        BlockAddress *block_lev2 = (BlockAddress*)ReadBlock(in->block[9]);
         if (lev0_num == 0)
                 block_lev2[lev1_num] = AllocateBlock();
-        BlockAddr *block_lev1 = (BlockAddr*)ReadBlock(block_lev2[lev1_num]);
+        BlockAddress *block_lev1 = (BlockAddress*)ReadBlock(block_lev2[lev1_num]);
         block_lev1[lev0_num] = new_block;
         UnmapBlock(block_lev1);
         UnmapBlock(block_lev2);
@@ -180,8 +181,8 @@ uint32_t BlockManager::SearchFreeBlock(uint32_t idx) const
         uint32_t blocks = storage_size / 8;
         for (uint32_t i = blocks * idx; i < blocks * (idx + 1); i++) {
                 for (char mask = 0x1, j = 0; mask; mask <<= 1, j++) {
-                        if (bitarray[i] & mask) {
-                                bitarray[i] &= ~mask;
+                        if (bitmap[i] & mask) {
+                                bitmap[i] &= ~mask;
                                 return (i - blocks * idx) * 8 + j;
                         }
                 }
@@ -195,7 +196,7 @@ uint32_t BlockManager::CalculateFreeBlocks(uint32_t idx) const
         uint32_t blocks = storage_size / 8;
         for (uint32_t i = blocks * idx; i < blocks * (idx + 1); i++) {
                 for (char mask = 0x1; mask; mask <<= 1) {
-                        if (bitarray[i] & mask)
+                        if (bitmap[i] & mask)
                                 free_blocks++;
                 }
         }

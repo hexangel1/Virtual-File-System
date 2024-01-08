@@ -11,7 +11,7 @@ struct Inode {
         bool is_dir;
         off_t byte_size;
         off_t blk_size;
-        BlockAddr block[10];
+        BlockAddress block[10];
 };
 
 class InodeManager {

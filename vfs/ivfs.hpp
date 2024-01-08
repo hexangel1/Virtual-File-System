@@ -37,10 +37,12 @@ class IVFS {
                 bool c_flag;
                 bool t_flag;
         };
+#pragma pack(push, 8)
         struct DirRecord {
                 char name[max_name_len + 1];
-                char idx[63 - max_name_len];
+                char idx[8];
         };
+#pragma pack(pop)
         struct OpenedFileItem {
                 OpenedFile *file;
                 OpenedFileItem *next;
